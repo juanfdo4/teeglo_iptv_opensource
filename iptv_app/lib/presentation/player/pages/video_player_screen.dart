@@ -15,13 +15,30 @@ class VideoPlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
-  late final Player player = Player();
+  late final Player player = Player(
+    configuration: const PlayerConfiguration(
+      bufferSize: 32 * 1024 * 1024,
+      logLevel: MPVLogLevel.debug,
+    ),
+  );
   late final VideoController controller = VideoController(player);
 
   @override
   void initState() {
     super.initState();
-    player.open(Media(widget.channel.url));
+    player.stream.log.listen((event) {
+      print('MPV_LOG: ${event.level} - ${event.prefix}: ${event.text}');
+    });
+
+    player.open(
+      Media(
+        widget.channel.url,
+        httpHeaders: {
+          'User-Agent': 'VLC/3.0.9 LibVLC/3.0.9',
+          'Connection': 'keep-alive',
+        },
+      ),
+    );
   }
 
   @override
@@ -38,9 +55,33 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
         backgroundColor: Colors.black.withValues(alpha: 0.5),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          widget.channel.name,
-          style: const TextStyle(color: Colors.white),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.channel.name,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            StreamBuilder<Duration>(
+              stream: player.stream.duration,
+              builder: (context, snapshot) {
+                final duration = snapshot.data ?? Duration.zero;
+                if (duration.inMinutes > 0) {
+                  return Text(
+                    '🎬 Archivo • ${duration.inMinutes} min',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  );
+                } else {
+                  return const Text(
+                    '🔴 EN VIVO',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                  );
+                }
+              },
+            ),
+          ],
         ),
         actions: [
           IconButton(

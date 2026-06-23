@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/active_playlist_provider.dart';
+import '../providers/home_provider.dart';
 import '../widgets/channel_list_widget.dart';
 import 'playlist_manager_page.dart';
 import 'favorites_page.dart';
@@ -18,15 +19,11 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
   @override
   Widget build(BuildContext context) {
     final activePlaylistAsync = ref.watch(activePlaylistProvider);
+    final allPlaylistsAsync = ref.watch(localPlaylistsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _currentIndex == 0 ? 'Live TV' : 
-          _currentIndex == 1 ? 'VOD & Series' : 
-          _currentIndex == 2 ? 'Favorites' : 
-          'Settings & Playlists'
-        ),
+        title: _buildAppBarTitle(activePlaylistAsync, allPlaylistsAsync),
       ),
       body: _buildBody(activePlaylistAsync),
       bottomNavigationBar: BottomNavigationBar(
@@ -40,6 +37,49 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
+    );
+  }
+
+  Widget _buildAppBarTitle(AsyncValue activePlaylistAsync, AsyncValue allPlaylistsAsync) {
+    if (_currentIndex == 2) return const Text('Favorites');
+    if (_currentIndex == 3) return const Text('Settings & Playlists');
+
+    return activePlaylistAsync.when(
+      data: (activePlaylist) {
+        if (activePlaylist == null) return const Text('No Playlist');
+
+        return allPlaylistsAsync.when(
+          data: (allPlaylists) {
+            if (allPlaylists.isEmpty) return Text(activePlaylist.name);
+
+            return PopupMenuButton<String>(
+              initialValue: activePlaylist.id,
+              onSelected: (String id) {
+                ref.read(activePlaylistIdProvider.notifier).setActivePlaylist(id);
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(activePlaylist.name),
+                  const Icon(Icons.arrow_drop_down),
+                ],
+              ),
+              itemBuilder: (BuildContext context) {
+                return allPlaylists.map((p) {
+                  return PopupMenuItem<String>(
+                    value: p.id,
+                    child: Text(p.name),
+                  );
+                }).toList();
+              },
+            );
+          },
+          loading: () => Text(activePlaylist.name),
+          error: (error, stack) => Text(activePlaylist.name),
+        );
+      },
+      loading: () => const Text('Loading...'),
+      error: (error, stack) => const Text('Error'),
     );
   }
 
