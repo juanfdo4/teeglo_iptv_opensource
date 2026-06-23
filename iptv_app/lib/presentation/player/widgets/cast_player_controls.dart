@@ -44,8 +44,9 @@ class CastPlayerControls extends StatelessWidget {
           builder: (context, durationSnapshot) {
             final duration = durationSnapshot.data ?? Duration.zero;
             
-            // Si la duración es 0, asumimos que es en vivo y no mostramos la barra
-            if (duration.inSeconds == 0) {
+            // Si la duración es 0 o negativa (Chromecast reporta -1 para Live Streams),
+            // asumimos que es en vivo y no mostramos la barra
+            if (duration.inSeconds <= 0) {
               return const Padding(
                 padding: EdgeInsets.only(top: 20.0),
                 child: Text('🔴 EN VIVO', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),

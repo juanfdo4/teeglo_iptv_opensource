@@ -1,29 +1,45 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
+import 'package:shelf_static/shelf_static.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
+import 'package:ffmpeg_kit_flutter_new/log.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
-/// Proxy local que hace de puente entre el proveedor IPTV y el Chromecast.
-/// Retransmite el stream original inyectando los headers necesarios (User-Agent).
-/// Usa un StreamController intermedio para evitar crashes cuando el servidor
-/// se cierra mientras el upstream sigue enviando datos.
+/// Proxy local que usa FFmpeg para convertir streams IPTV (MPEG-TS, posiblemente
+/// entrelazados) en HLS estándar compatible con el Chromecast Default Media Receiver.
+///
+/// En Android/iOS: usa [ffmpeg_kit_flutter_new] (FFmpeg embebido, sin binario externo).
+/// En macOS/Linux: usa el binario del sistema [Process.start].
+///
+/// FFmpeg se encarga de:
+/// - Seguir redirecciones HTTP automáticamente (302 → token de auth fresco)
+/// - Desentrelazar el video (yadif) → H.264 progresivo compatible con Chromecast
+/// - Segmentar en chunks HLS de ~4s con ventana deslizante live
+/// - Reconectarse automáticamente si el servidor IPTV corta la conexión
 class IptvHlsProxy {
   HttpServer? _server;
+
+  // Mobile: FFmpegSession de ffmpeg_kit_flutter
+  FFmpegSession? _ffmpegSession;
+
+  // Desktop: Process.start (macOS/Linux con ffmpeg instalado)
+  Process? _ffmpegProcess;
+
   String? _localIp;
   int _port = 0;
+  String? _hlsDir;
 
-  String? _streamUrl;
-  Map<String, String>? _headers;
-
-  // Recursos activos que debemos limpiar al detener
-  HttpClient? _activeClient;
-  StreamController<List<int>>? _activeController;
-  bool _stopped = false;
-
+  /// URL base del servidor local (e.g. http://192.168.1.3:PORT)
   String? get baseUrl => _localIp != null ? 'http://$_localIp:$_port' : null;
-  String? get playlistUrl => baseUrl != null ? '$baseUrl/playlist.m3u8' : null;
-  String? get streamUrl => baseUrl != null ? '$baseUrl/stream.ts' : null;
+
+  /// URL de la playlist HLS para enviar al Chromecast
+  String? get playlistUrl =>
+      baseUrl != null ? '$baseUrl/playlist.m3u8' : null;
 
   Future<String?> _getLocalIp() async {
     try {
@@ -39,168 +55,227 @@ class IptvHlsProxy {
             final second = int.tryParse(parts[1]) ?? 0;
             if (first == 192 && second == 168) return addr.address;
             if (first == 10) return addr.address;
-            if (first == 172 && second >= 16 && second <= 31) return addr.address;
+            if (first == 172 && second >= 16 && second <= 31) {
+              return addr.address;
+            }
           }
         }
       }
     } catch (e) {
-      debugPrint('IptvProxy: Error obteniendo IP - $e');
+      debugPrint('IptvProxy: Error obteniendo IP local - $e');
     }
     return null;
   }
 
-  /// Inicia el servidor HTTP local
+  /// Inicia FFmpeg y el servidor HTTP local.
+  ///
+  /// [streamUrl]: URL original del stream IPTV (puede tener redirecciones).
+  /// [headers]: Headers HTTP adicionales (User-Agent, etc.).
   Future<void> start(String streamUrl, Map<String, String> headers) async {
     await stop();
 
-    _streamUrl = streamUrl;
-    _headers = headers;
-    _stopped = false;
-
     _localIp = await _getLocalIp();
     if (_localIp == null) {
-      throw Exception('IptvProxy: No se pudo obtener la IP local');
+      throw Exception('IptvProxy: No se pudo obtener la IP local de red');
     }
 
-    final handler = const Pipeline().addHandler(_handleRequest);
-    _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, 0);
-    _port = _server!.port;
+    // Usar el directorio de caché de la app — siempre disponible en Android/iOS/macOS
+    final cacheDir = await getTemporaryDirectory();
+    final hlsDirPath = '${cacheDir.path}/iptv_hls_${DateTime.now().millisecondsSinceEpoch}';
+    final dir = Directory(hlsDirPath);
+    dir.createSync(recursive: true);
+    _hlsDir = hlsDirPath;
 
-    debugPrint('IptvProxy: Servidor iniciado en http://$_localIp:$_port');
+    debugPrint('IptvProxy: Iniciando FFmpeg → HLS en $_hlsDir');
+    debugPrint('IptvProxy: Stream URL: $streamUrl');
+
+    await _startFfmpeg(streamUrl, headers);
+    await _waitForSegments(minSegments: 3, timeoutSeconds: 35);
+    await _startServer();
+
+    debugPrint('IptvProxy: Servidor iniciado en $baseUrl');
     debugPrint('IptvProxy: URL del Chromecast: $playlistUrl');
   }
 
-  static const _corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Range',
-  };
+  /// Construye los argumentos de FFmpeg comunes a todas las plataformas.
+  List<String> _buildFfmpegArgs(String url, Map<String, String> headers) {
+    final userAgent = headers['User-Agent'] ?? 'VLC/3.0.9 LibVLC/3.0.9';
+    final hlsDir = _hlsDir!;
 
-  Future<Response> _handleRequest(Request request) async {
-    if (request.method == 'OPTIONS') {
-      return Response.ok('', headers: _corsHeaders);
-    }
+    // CRÍTICO: el stream IPTV es H.264 entrelazado (yuv420p, top first).
+    // El Default Media Receiver del Chromecast NO soporta H.264 entrelazado.
+    // Usamos yadif para desentrelazar → H.264 progresivo compatible.
+    //
+    // FFmpeg sigue redirecciones HTTP 302 internamente, por lo que NO pre-resolvemos
+    // la URL (los tokens de auth son de corta duración y expirarían).
+    return [
+      '-loglevel', 'warning',
+      '-reconnect', '1',
+      '-reconnect_at_eof', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-user_agent', userAgent,
+      '-i', url,
+      // Video: desentrelazar + recodificar a H.264 progresivo Chromecast-compatible
+      '-vf', 'yadif=mode=1',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-profile:v', 'high',
+      '-level:v', '4.1',
+      '-pix_fmt', 'yuv420p',
+      '-g', '50',           // keyframe cada 2s @ 25fps → cortes HLS limpios
+      '-sc_threshold', '0',
+      // Audio: AAC-LC estéreo (requerido por Chromecast)
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-ac', '2',
+      '-ar', '44100',
+      // Salida HLS rolling live
+      '-f', 'hls',
+      '-hls_time', '4',
+      '-hls_list_size', '6',
+      '-hls_flags', 'delete_segments+append_list',
+      '-hls_allow_cache', '0',
+      '-hls_segment_type', 'mpegts',
+      '-hls_segment_filename', '$hlsDir/seg%05d.ts',
+      '$hlsDir/playlist.m3u8',
+    ];
+  }
 
-    if (request.url.path == 'playlist.m3u8') {
-      final m3u8 = '#EXTM3U\n'
-          '#EXT-X-VERSION:3\n'
-          '#EXT-X-TARGETDURATION:86400\n'
-          '#EXTINF:86400.0,\n'
-          'stream.ts\n';
-      return Response.ok(
-        m3u8,
-        headers: {
-          'Content-Type': 'application/x-mpegURL',
-          ..._corsHeaders,
-          'Cache-Control': 'no-cache',
+  Future<void> _startFfmpeg(String url, Map<String, String> headers) async {
+    final args = _buildFfmpegArgs(url, headers);
+
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      // === Móvil: usar ffmpeg_kit_flutter (FFmpeg embebido) ===
+      debugPrint('IptvProxy: Iniciando FFmpegKit (móvil) con ${args.length} argumentos');
+
+      _ffmpegSession = await FFmpegKit.executeWithArgumentsAsync(
+        args,
+        (session) async {
+          final code = await session.getReturnCode();
+          debugPrint(
+            'IptvProxy: FFmpegKit terminó — '
+            'código: ${ReturnCode.isSuccess(code) ? "OK" : code}',
+          );
+        },
+        (Log log) {
+          debugPrint('[FFmpeg] ${log.getMessage()}');
         },
       );
-    }
+    } else {
+      // === Escritorio: usar binario del sistema (macOS/Linux) ===
+      final ffmpegBin = _detectDesktopFfmpeg();
+      debugPrint('IptvProxy: Iniciando FFmpeg proceso ($ffmpegBin)');
 
-    if (request.url.path != 'stream.ts') {
-      return Response.notFound('Not found');
-    }
+      _ffmpegProcess = await Process.start(ffmpegBin, args);
 
-    if (_streamUrl == null || _stopped) {
-      return Response.internalServerError(body: 'No stream configured');
-    }
+      _ffmpegProcess!.stderr.listen((data) {
+        final msg = String.fromCharCodes(data).trim();
+        if (msg.isNotEmpty) debugPrint('[FFmpeg] $msg');
+      });
 
-    debugPrint('IptvProxy: Chromecast conectado. Iniciando stream upstream...');
-
-    try {
-      final client = HttpClient();
-      _activeClient = client;
-
-      final uri = Uri.parse(_streamUrl!);
-      final upReq = await client.getUrl(uri);
-
-      if (_headers != null) {
-        _headers!.forEach((k, v) => upReq.headers.set(k, v));
-      }
-
-      final upRes = await upReq.close();
-      debugPrint('IptvProxy: Upstream conectado (status ${upRes.statusCode})');
-
-      if (upRes.statusCode != 200) {
-        client.close(force: true);
-        _activeClient = null;
-        return Response(upRes.statusCode, body: 'Upstream error');
-      }
-
-      // Usamos un StreamController intermedio para poder cerrar el flujo
-      // de manera segura cuando stop() sea llamado, sin que la VM de Dart
-      // intente invocar callbacks ya eliminados.
-      final controller = StreamController<List<int>>();
-      _activeController = controller;
-
-      // Escuchamos el upstream en un listen separado para poder cancelarlo
-      final sub = upRes.listen(
-        (data) {
-          if (!controller.isClosed && !_stopped) {
-            controller.add(data);
-          }
-        },
-        onError: (e) {
-          debugPrint('IptvProxy: Error en upstream: $e');
-          if (!controller.isClosed) {
-            controller.close();
-          }
-        },
-        onDone: () {
-          debugPrint('IptvProxy: Upstream terminó');
-          if (!controller.isClosed) {
-            controller.close();
-          }
-        },
-        cancelOnError: true,
-      );
-
-      // Cuando el controller se cierra (por stop() o por fin del stream),
-      // cancelamos la suscripción al upstream
-      controller.onCancel = () {
-        sub.cancel();
-        client.close(force: true);
-      };
-
-      return Response.ok(
-        controller.stream,
-        headers: {
-          'Content-Type': 'video/mp2t',
-          ..._corsHeaders,
-          'Cache-Control': 'no-cache',
-        },
-      );
-    } catch (e) {
-      debugPrint('IptvProxy: Error proxying stream: $e');
-      return Response.internalServerError(body: 'Error: $e');
+      _ffmpegProcess!.exitCode.then((code) {
+        debugPrint('IptvProxy: FFmpeg proceso terminó con código $code');
+      });
     }
   }
 
-  Future<void> stop() async {
-    _stopped = true;
+  static String _detectDesktopFfmpeg() {
+    if (File('/opt/homebrew/bin/ffmpeg').existsSync()) {
+      return '/opt/homebrew/bin/ffmpeg';
+    }
+    if (File('/usr/local/bin/ffmpeg').existsSync()) {
+      return '/usr/local/bin/ffmpeg';
+    }
+    return 'ffmpeg';
+  }
 
-    // Cerrar el StreamController primero (esto dispara onCancel que cierra el client)
-    try {
-      if (_activeController != null && !_activeController!.isClosed) {
-        await _activeController!.close();
+  Future<void> _waitForSegments({
+    required int minSegments,
+    required int timeoutSeconds,
+  }) async {
+    debugPrint('IptvProxy: Esperando $minSegments segmentos iniciales...');
+    final playlistFile = File('$_hlsDir/playlist.m3u8');
+    final deadline = DateTime.now().add(Duration(seconds: timeoutSeconds));
+
+    while (DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      if (!playlistFile.existsSync()) continue;
+
+      final content = playlistFile.readAsStringSync();
+      final segCount = RegExp(r'\.ts').allMatches(content).length;
+
+      debugPrint('IptvProxy: FFmpeg progreso: $segCount segmento(s) listos...');
+
+      if (segCount >= minSegments) {
+        debugPrint('IptvProxy: Segmentos iniciales listos ✓');
+        return;
       }
-    } catch (_) {}
-    _activeController = null;
+    }
 
-    // Cerrar el HttpClient por si acaso
-    try {
-      _activeClient?.close(force: true);
-    } catch (_) {}
-    _activeClient = null;
+    debugPrint(
+      'IptvProxy: Advertencia — timeout esperando $minSegments segmentos '
+      '(continuando de todos modos)',
+    );
+  }
 
-    // Finalmente cerrar el servidor HTTP
+  Future<void> _startServer() async {
+    final staticHandler = createStaticHandler(
+      _hlsDir!,
+      defaultDocument: 'playlist.m3u8',
+    );
+
+    final handler = const Pipeline()
+        .addMiddleware(_corsMiddleware())
+        .addHandler(staticHandler);
+
+    _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, 0);
+    _port = _server!.port;
+  }
+
+  Middleware _corsMiddleware() {
+    return (Handler inner) {
+      return (Request req) async {
+        debugPrint('IptvProxy: HTTP ${req.method} ${req.url}');
+        final res = await inner(req);
+        return res.change(headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache, no-store',
+        });
+      };
+    };
+  }
+
+  /// Detiene FFmpeg y el servidor HTTP, y limpia el directorio temporal.
+  Future<void> stop() async {
+    // Detener FFmpegKit (móvil)
+    if (_ffmpegSession != null) {
+      await FFmpegKit.cancel();
+      _ffmpegSession = null;
+    }
+
+    // Detener proceso (escritorio)
+    _ffmpegProcess?.kill();
+    _ffmpegProcess = null;
+
+    // Detener servidor HTTP
     try {
       await _server?.close(force: true);
     } catch (_) {}
     _server = null;
     _port = 0;
-    _streamUrl = null;
-    _headers = null;
+    _localIp = null;
+
+    // Limpiar directorio temporal
+    if (_hlsDir != null) {
+      try {
+        final dir = Directory(_hlsDir!);
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      } catch (_) {}
+      _hlsDir = null;
+    }
+
     debugPrint('IptvProxy: Servidor detenido');
   }
 }
