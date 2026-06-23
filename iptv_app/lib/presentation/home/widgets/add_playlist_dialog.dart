@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_selector/file_selector.dart';
 import '../providers/home_provider.dart';
 
+enum PlaylistInputType { file, url, xtream }
+
 class AddPlaylistDialog extends ConsumerStatefulWidget {
   const AddPlaylistDialog({super.key});
 
@@ -11,8 +13,15 @@ class AddPlaylistDialog extends ConsumerStatefulWidget {
 }
 
 class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
+  PlaylistInputType _inputType = PlaylistInputType.xtream; // Default to the new cool one
+
   final _nameController = TextEditingController();
   final _urlController = TextEditingController();
+  
+  final _serverUrlController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+
   bool _isLoading = false;
 
   Future<void> _addRemotePlaylist() async {
@@ -21,7 +30,7 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
     
     if (name.isEmpty || url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter name and URL')),
+        const SnackBar(content: Text('Por favor ingresa nombre y URL')),
       );
       return;
     }
@@ -44,11 +53,45 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
     );
   }
 
+  Future<void> _addXtreamPlaylist() async {
+    final name = _nameController.text.trim();
+    final serverUrl = _serverUrlController.text.trim();
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+    
+    if (name.isEmpty || serverUrl.isEmpty || username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor llena todos los campos')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    
+    final cleanServerUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+    final fullUrl = '$cleanServerUrl/get.php?username=$username&password=$password&type=m3u_plus&output=mpegts';
+    
+    final repo = ref.read(playlistRepositoryProvider);
+    final result = await repo.fetchPlaylist(name, fullUrl);
+    
+    setState(() => _isLoading = false);
+
+    result.fold(
+      (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${failure.message}')),
+      ),
+      (playlist) {
+        ref.invalidate(localPlaylistsProvider);
+        if (mounted) Navigator.pop(context);
+      },
+    );
+  }
+
   Future<void> _addLocalPlaylist() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a name first')),
+        const SnackBar(content: Text('Por favor ingresa un nombre primero')),
       );
       return;
     }
@@ -76,7 +119,7 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to read file: $e')),
+            SnackBar(content: Text('Fallo al leer archivo: $e')),
           );
         }
       } finally {
@@ -88,20 +131,122 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add Playlist'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Playlist Name'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _urlController,
-            decoration: const InputDecoration(labelText: 'Playlist URL (Remote)'),
-          ),
-        ],
+      title: const Text('Agregar Lista IPTV'),
+      backgroundColor: const Color(0xFF1A1A24),
+      surfaceTintColor: Colors.transparent,
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<PlaylistInputType>(
+              segments: const [
+                ButtonSegment(
+                  value: PlaylistInputType.xtream,
+                  label: Text('Xtream API', style: TextStyle(fontSize: 12)),
+                ),
+                ButtonSegment(
+                  value: PlaylistInputType.url,
+                  label: Text('URL', style: TextStyle(fontSize: 12)),
+                ),
+                ButtonSegment(
+                  value: PlaylistInputType.file,
+                  label: Text('Archivo', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+              selected: {_inputType},
+              onSelectionChanged: (Set<PlaylistInputType> newSelection) {
+                setState(() {
+                  _inputType = newSelection.first;
+                });
+              },
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return Colors.blue.withValues(alpha: 0.3);
+                  }
+                  return Colors.transparent;
+                }),
+                foregroundColor: WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return Colors.white;
+                  }
+                  return Colors.grey;
+                }),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            TextField(
+              controller: _nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Nombre de la lista (ej: Mi TV)',
+                labelStyle: TextStyle(color: Colors.grey),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blue)),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            if (_inputType == PlaylistInputType.url) ...[
+              TextField(
+                controller: _urlController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'URL Completa (.m3u)',
+                  labelStyle: TextStyle(color: Colors.grey),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blue)),
+                ),
+              ),
+            ],
+
+            if (_inputType == PlaylistInputType.xtream) ...[
+              TextField(
+                controller: _serverUrlController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'URL Base (ej: http://red4tv.lat:80)',
+                  labelStyle: TextStyle(color: Colors.grey),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blue)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _usernameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Usuario',
+                  labelStyle: TextStyle(color: Colors.grey),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blue)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _passwordController,
+                style: const TextStyle(color: Colors.white),
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Contraseña',
+                  labelStyle: TextStyle(color: Colors.grey),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blue)),
+                ),
+              ),
+            ],
+
+            if (_inputType == PlaylistInputType.file) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Selecciona el botón de abajo para buscar tu archivo .m3u local',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            ]
+          ],
+        ),
       ),
       actions: [
         if (_isLoading)
@@ -112,16 +257,27 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
         if (!_isLoading) ...[
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
           ),
-          TextButton(
-            onPressed: _addLocalPlaylist,
-            child: const Text('Local File'),
-          ),
-          TextButton(
-            onPressed: _addRemotePlaylist,
-            child: const Text('URL'),
-          ),
+          
+          if (_inputType == PlaylistInputType.file)
+            ElevatedButton(
+              onPressed: _addLocalPlaylist,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              child: const Text('Buscar Archivo', style: TextStyle(color: Colors.white)),
+            )
+          else if (_inputType == PlaylistInputType.url)
+            ElevatedButton(
+              onPressed: _addRemotePlaylist,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              child: const Text('Agregar URL', style: TextStyle(color: Colors.white)),
+            )
+          else if (_inputType == PlaylistInputType.xtream)
+            ElevatedButton(
+              onPressed: _addXtreamPlaylist,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              child: const Text('Conectar', style: TextStyle(color: Colors.white)),
+            )
         ]
       ],
     );
