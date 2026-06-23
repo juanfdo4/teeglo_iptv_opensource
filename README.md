@@ -29,10 +29,10 @@ This project is provided **as-is** for educational and personal use. Teeglo IPTV
 ## ✨ Features
 
 ### 📺 Core Playback
-- **M3U / M3U8 Playlist Support** — Load playlists from remote URLs or paste content directly
-- **High-Performance Video Player** — Powered by [media_kit](https://github.com/media-kit/media-kit) (libmpv) for reliable playback of any stream format (HLS, MPEG-TS, RTMP, HTTP)
-- **Adaptive Buffering** — Optimized FFmpeg parameters for fast stream startup and smooth playback
-- **Playback Progress Tracking** — Automatically saves and resumes progress for VOD content (movies, series)
+- **Multiple Import Methods** — Load playlists from remote URLs, local M3U files, or directly log in using Xtream Codes API credentials.
+- **High-Performance Video Player** — Powered by [media_kit](https://github.com/media-kit/media-kit) (libmpv) for reliable playback of any stream format (HLS, MPEG-TS, RTMP, HTTP).
+- **Adaptive Buffering** — Optimized FFmpeg parameters for fast stream startup and smooth playback.
+- **Playback Progress Tracking** — Automatically saves and resumes progress for VOD content (movies, series).
 
 ### 📡 Chromecast / Google Cast
 - **Cast to TV** — Stream any channel directly to a Chromecast or Google Cast-compatible device on your local network
@@ -89,7 +89,10 @@ flutter run
 
 ### Pre-built APK
 
-You can download the latest pre-built APK from the [Releases](https://github.com/your-username/teeglo-iptv/releases) page.
+You can download the latest pre-built APK (V1.0.0) from the internal releases folder:
+- [Teeglo IPTV V1.0.0 APK](releases/V1.0.0/teeglo_iptv_V1.0.0.apk)
+
+Or check the GitHub [Releases](https://github.com/your-username/teeglo-iptv/releases) page once published.
 
 ---
 

@@ -1,0 +1,9 @@
+releases/
+build/
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+*.apk
+*.aab
+*.keystore
