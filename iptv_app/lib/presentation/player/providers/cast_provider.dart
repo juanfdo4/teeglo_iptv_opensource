@@ -349,7 +349,7 @@ class CastNotifier extends Notifier<CastState> {
         },
       ));
 
-      final progressService = ref.read(playbackProgressProvider);
+      final progressService = ref.read(playbackProgressProvider.notifier);
       
       // Auto-seek si había progreso guardado
       final lastPos = progressService.getProgress(url);

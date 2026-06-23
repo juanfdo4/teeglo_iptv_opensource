@@ -1,4 +1,6 @@
+
 import '../models/channel_model.dart';
+import '../../domain/entities/channel.dart';
 
 class M3uParser {
   static List<ChannelModel> parse(String content) {
@@ -36,12 +38,35 @@ class M3uParser {
         // This is likely the URL
         if (currentName != null) {
           final uniqueId = currentId != null ? '${currentId}_${line.trim()}' : line.trim();
+          final year = _extractYear(currentName);
+          final contentType = _detectContentType(line, currentName);
+          String? seriesName;
+          int? season;
+          int? episode;
+
+          if (contentType == ContentType.series) {
+            final seriesInfo = _parseSeriesInfo(currentName);
+            if (seriesInfo != null) {
+              seriesName = seriesInfo.name;
+              season = seriesInfo.season;
+              episode = seriesInfo.episode;
+            } else {
+              // Si falla el parseo, fallback a pelicula
+              seriesName = currentName;
+            }
+          }
+
           channels.add(ChannelModel(
             id: uniqueId, // Guarantee uniqueness by including the URL
             name: currentName,
             url: line,
             logoUrl: currentLogoUrl ?? '',
             group: currentGroup ?? 'Uncategorized',
+            contentType: contentType,
+            seriesName: seriesName,
+            season: season,
+            episode: episode,
+            year: year,
           ));
           
           // Reset for the next channel
@@ -71,5 +96,37 @@ class M3uParser {
       return match.group(1);
     }
     return null;
+  }
+
+  static ContentType _detectContentType(String url, String name) {
+    final urlLower = url.toLowerCase();
+    final fileExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.ts', '.flv'];
+    final hasFileExt = fileExtensions.any((ext) => urlLower.contains('#$ext') || urlLower.endsWith(ext));
+    
+    if (!hasFileExt) return ContentType.live;
+    
+    // Detectar patrón SxxExx en el nombre
+    final seriesRegex = RegExp(r'S(\d{1,2})E(\d{1,3})', caseSensitive: false);
+    if (seriesRegex.hasMatch(name)) return ContentType.series;
+    
+    return ContentType.movie;
+  }
+
+  static ({String name, int season, int episode})? _parseSeriesInfo(String name) {
+    final regex = RegExp(r'(.+?)\s*S(\d{1,2})E(\d{1,3})', caseSensitive: false);
+    final match = regex.firstMatch(name);
+    if (match != null) {
+      return (
+        name: match.group(1)!.trim(),
+        season: int.parse(match.group(2)!),
+        episode: int.parse(match.group(3)!),
+      );
+    }
+    return null;
+  }
+
+  static String? _extractYear(String name) {
+    final regex = RegExp(r'\((\d{4})\)');
+    return regex.firstMatch(name)?.group(1);
   }
 }

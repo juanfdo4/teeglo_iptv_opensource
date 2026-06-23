@@ -10,8 +10,13 @@ import '../widgets/cast_player_controls.dart';
 
 class VideoPlayerScreen extends ConsumerStatefulWidget {
   final Channel channel;
+  final Channel? nextEpisode;
 
-  const VideoPlayerScreen({super.key, required this.channel});
+  const VideoPlayerScreen({
+    super.key, 
+    required this.channel,
+    this.nextEpisode,
+  });
 
   @override
   ConsumerState<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -37,7 +42,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
       final castState = ref.read(castNotifierProvider);
       final isCasting = castState.session != null;
       
-      final progressService = ref.read(playbackProgressProvider);
+      final progressService = ref.read(playbackProgressProvider.notifier);
       final savedProgress = progressService.getProgress(widget.channel.url);
 
       if (isCasting) {
@@ -64,9 +69,28 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
       );
       
       if (!isCasting && savedProgress != null && context.mounted) {
-        _showResumeDialog(savedProgress, () {
-          player.seek(savedProgress);
-          player.play();
+        _showResumeDialog(savedProgress, () async {
+          // 1. Iniciamos la reproducción para forzar la carga del stream
+          await player.play(); 
+
+          // 2. Esperamos hasta que el reproductor obtenga la duración real del video
+          int checks = 0;
+          while (player.state.duration.inSeconds == 0 && checks < 15) {
+            await Future.delayed(const Duration(seconds: 1));
+            checks++;
+          }
+
+          // 3. Una vez tengamos la duración, esperamos 1 segundo extra para que 
+          // el buffer inicial se estabilice antes de saltar.
+          await Future.delayed(const Duration(seconds: 1));
+          await player.seek(savedProgress); 
+
+          // 4. Verificamos si el salto fue exitoso (a veces el reproductor lo ignora si está muy crudo)
+          await Future.delayed(const Duration(seconds: 3));
+          if ((player.state.position.inSeconds - savedProgress.inSeconds).abs() > 10) {
+            // Si la posición sigue en 0 o muy lejos, intentamos el salto una vez más
+            await player.seek(savedProgress);
+          }
         });
       }
 
@@ -100,7 +124,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              ref.read(playbackProgressProvider).clearProgress(widget.channel.url);
+              ref.read(playbackProgressProvider.notifier).clearProgress(widget.channel.url);
               if (ref.read(castNotifierProvider).session == null) {
                 player.play(); // Start from 0 locally
               }
@@ -113,7 +137,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
               onResume();
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: const Text('Continuar', style: TextStyle(color: Colors.white)),
+            child: const Text('Reanudar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -280,15 +304,59 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
         builder: (context) {
           final errorMessage = castState.errorMessage;
 
-          // Si hay error de casting, mostrar mensaje y reanudar video local
-          if (errorMessage != null && !isCasting) {
-            // Reanudar el video local automáticamente si hay error
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!player.state.playing) player.play();
-            });
-            return Stack(
-              children: [
-                Video(controller: controller),
+            final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+            
+            final videoWidget = MaterialVideoControlsTheme(
+              normal: MaterialVideoControlsThemeData(
+                bottomButtonBarMargin: EdgeInsets.only(
+                  left: 16, 
+                  right: 16, 
+                  bottom: isPortrait ? 80.0 : 16.0, // Subimos los botones en vertical
+                ),
+                seekBarMargin: EdgeInsets.only(
+                  left: 16, 
+                  right: 16, 
+                  bottom: isPortrait ? 80.0 : 0.0, // Subimos la barra de tiempo en vertical
+                ),
+                topButtonBar: [
+                  const Spacer(),
+                  if (widget.nextEpisode != null)
+                    MaterialCustomButton(
+                      onPressed: () {
+                        player.pause();
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => VideoPlayerScreen(
+                              channel: widget.nextEpisode!,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Siguiente', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          SizedBox(width: 4),
+                          Icon(Icons.skip_next, color: Colors.white),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              fullscreen: const MaterialVideoControlsThemeData(),
+              child: Video(controller: controller),
+            );
+
+            // Si hay error de casting, mostrar mensaje y reanudar video local
+            if (errorMessage != null && !isCasting) {
+              // Reanudar el video local automáticamente si hay error
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!player.state.playing) player.play();
+              });
+              return Stack(
+                children: [
+                  videoWidget,
                 Positioned(
                   bottom: 60,
                   left: 16,
@@ -338,7 +406,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
             );
           }
 
-          return Video(controller: controller);
+          return videoWidget;
         },
       ),
     );

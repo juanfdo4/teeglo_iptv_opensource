@@ -33,11 +33,18 @@ void main() async {
   final settingsBox = await Hive.openBox('settings');
   await Hive.openBox('playback_progress');
 
-  // Limpiar la base de datos corrupta con IDs viejos duplicados
-  if (settingsBox.get('migrated_ids_v3') != true) {
-    await playlistsBox.clear();
-    await favoritesBox.clear();
-    await settingsBox.put('migrated_ids_v3', true);
+  // MIGRATION BLOCK: If the user hasn't run the new version with content types, clear DB
+  final isMigrated = settingsBox.get('migrated_ids_v4');
+  
+  if (isMigrated != 'true') {
+    // Clear out old data that might cause collisions or lacks new enum types
+    await Hive.deleteBoxFromDisk('playlists');
+    await Hive.deleteBoxFromDisk('favorites');
+    await Hive.openBox('playlists');
+    await Hive.openBox('favorites');
+    
+    // Mark as migrated
+    await settingsBox.put('migrated_ids_v4', 'true');
   }
 
   runApp(
@@ -57,7 +64,7 @@ class MyApp extends StatelessWidget {
       title: 'Teeglo IPTV',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system, // Switch automatically based on OS setting
+      themeMode: ThemeMode.dark, // Enforce dark theme
       home: const SplashScreen(nextScreen: MainDashboard()),
     );
   }

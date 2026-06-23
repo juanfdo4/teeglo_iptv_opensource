@@ -1,54 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../domain/entities/channel.dart';
 import '../providers/favorites_provider.dart';
-import '../../player/pages/video_player_screen.dart';
+import '../widgets/content_card.dart';
 
 class FavoritesPage extends ConsumerWidget {
   const FavoritesPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final favorites = ref.watch(favoritesProvider).toList();
+    final favoritesAsync = ref.watch(favoritesProvider);
 
-    if (favorites.isEmpty) {
-      return const Center(
-        child: Text('No favorites yet. Tap the heart icon in the player!'),
-      );
+    if (favoritesAsync.isEmpty) {
+      return const Center(child: Text('Aún no has agregado nada a tu lista'));
     }
 
-    favorites.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    // Separate into categories for better display
+    final live = favoritesAsync.where((c) => c.contentType == ContentType.live).toList();
+    final movies = favoritesAsync.where((c) => c.contentType == ContentType.movie).toList();
+    final series = favoritesAsync.where((c) => c.contentType == ContentType.series).toList();
 
-    return ListView.builder(
-      itemCount: favorites.length,
-      itemBuilder: (context, index) {
-        final channel = favorites[index];
-        return ListTile(
-          leading: channel.logoUrl.isNotEmpty
-              ? Image.network(
-                  channel.logoUrl,
-                  width: 50,
-                  height: 50,
-                  errorBuilder: (ctx, err, stack) => const Icon(Icons.favorite, color: Colors.red),
-                )
-              : const Icon(Icons.favorite, color: Colors.red),
-          title: Text(channel.name),
-          subtitle: Text(channel.group),
-          trailing: IconButton(
-            icon: const Icon(Icons.remove_circle_outline, color: Colors.grey),
-            onPressed: () {
-              ref.read(favoritesProvider.notifier).toggleFavorite(channel);
-            },
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('Mi Lista', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
           ),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => VideoPlayerScreen(channel: channel),
-              ),
-            );
+          if (live.isNotEmpty) _buildSection('Canales Guardados', live),
+          if (movies.isNotEmpty) _buildSection('Películas Guardadas', movies),
+          if (series.isNotEmpty) _buildSection('Series Guardadas', series),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSection(String title, List<Channel> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white70)),
+        ),
+        GridView.builder(
+          physics: const NeverScrollableScrollPhysics(), // Scroll handled by SingleChildScrollView
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            childAspectRatio: 0.7,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            return ContentCard(channel: items[index]);
           },
-        );
-      },
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 }

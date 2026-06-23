@@ -4,17 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/channel.dart';
 import '../../player/pages/video_player_screen.dart';
 import '../providers/favorites_provider.dart';
+import '../../player/providers/playback_progress_provider.dart';
 
-class ChannelListWidget extends StatefulWidget {
+class ChannelListWidget extends ConsumerStatefulWidget {
   final List<Channel> channels;
 
   const ChannelListWidget({super.key, required this.channels});
 
   @override
-  State<ChannelListWidget> createState() => _ChannelListWidgetState();
+  ConsumerState<ChannelListWidget> createState() => _ChannelListWidgetState();
 }
 
-class _ChannelListWidgetState extends State<ChannelListWidget> {
+class _ChannelListWidgetState extends ConsumerState<ChannelListWidget> {
   String _selectedCategory = 'All';
   late List<String> _categories;
   String _searchQuery = '';
@@ -57,8 +58,31 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
       filteredChannels = filteredChannels.where((c) => c.name.toLowerCase().contains(q)).toList();
     }
 
-    // Siempre ordenar alfabéticamente
-    filteredChannels.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    ref.watch(playbackProgressProvider); // Rebuilds when state (int) changes
+    final progressService = ref.read(playbackProgressProvider.notifier);
+
+    // Siempre ordenar alfabéticamente pero dando prioridad al progreso
+    filteredChannels.sort((a, b) {
+      final aWatched = progressService.isWatched(a.url);
+      final bWatched = progressService.isWatched(b.url);
+      final aProg = progressService.getProgress(a.url);
+      final bProg = progressService.getProgress(b.url);
+      
+      int getWeight(bool watched, Duration? prog) {
+        if (watched) return 3; // Fully watched goes to bottom
+        if (prog != null && prog.inSeconds > 0) return 1; // In progress goes to top
+        return 2; // Unwatched in middle
+      }
+      
+      final weightA = getWeight(aWatched, aProg);
+      final weightB = getWeight(bWatched, bProg);
+      
+      if (weightA != weightB) {
+        return weightA.compareTo(weightB);
+      }
+      
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
 
     return Column(
       children: [
