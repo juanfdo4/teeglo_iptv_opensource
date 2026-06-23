@@ -89,10 +89,8 @@ flutter run
 
 ### Pre-built APK
 
-You can download the latest pre-built APK (V1.0.0) from the internal releases folder:
-- [Teeglo IPTV V1.0.0 APK](releases/V1.0.0/teeglo_iptv_V1.0.0.apk)
-
-Or check the GitHub [Releases](https://github.com/your-username/teeglo-iptv/releases) page once published.
+You can download the latest pre-built APK (V1.0.0) directly from GitHub:
+- [Teeglo IPTV V1.0.0 APK](https://github.com/juanfdo4/teeglo_iptv_opensource/releases/tag/V1.0.0)
 
 ---
 
