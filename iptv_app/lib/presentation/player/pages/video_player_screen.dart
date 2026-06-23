@@ -255,14 +255,13 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
           ),
           IconButton(
             icon: Icon(
-              ref.watch(favoritesProvider.notifier).isFavorite(widget.channel.id) 
+              ref.watch(favoritesProvider).any((c) => c.id == widget.channel.id)
                 ? Icons.favorite 
                 : Icons.favorite_border,
               color: Colors.red,
             ),
             onPressed: () {
-              ref.read(favoritesProvider.notifier).toggleFavorite(widget.channel);
-              setState(() {}); 
+              ref.read(favoritesProvider.notifier).toggleFavorite(widget.channel); 
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(

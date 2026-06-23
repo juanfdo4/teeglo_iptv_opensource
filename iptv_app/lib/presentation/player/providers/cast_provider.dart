@@ -193,7 +193,7 @@ class CastNotifier extends Notifier<CastState> {
           playingUrl: url,
         );
         
-        _reconnect(device);
+        Future.microtask(() => _reconnect(device));
       }
     } catch (e) {
       debugPrint('Error restoring cast device: $e');

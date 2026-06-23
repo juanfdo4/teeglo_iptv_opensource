@@ -26,11 +26,18 @@ void main() async {
   );
   
   // Open boxes
-  await Hive.openBox('playlists');
-  await Hive.openBox('favorites');
+  final playlistsBox = await Hive.openBox('playlists');
+  final favoritesBox = await Hive.openBox('favorites');
   await Hive.openBox('history');
-  await Hive.openBox('settings');
+  final settingsBox = await Hive.openBox('settings');
   await Hive.openBox('playback_progress');
+
+  // Limpiar la base de datos corrupta con IDs viejos duplicados
+  if (settingsBox.get('migrated_ids_v3') != true) {
+    await playlistsBox.clear();
+    await favoritesBox.clear();
+    await settingsBox.put('migrated_ids_v3', true);
+  }
 
   runApp(
     // Added ProviderScope for Riverpod state management

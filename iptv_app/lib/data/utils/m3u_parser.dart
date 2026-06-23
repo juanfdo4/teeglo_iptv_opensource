@@ -23,12 +23,21 @@ class M3uParser {
         currentName = _extractName(line);
         currentLogoUrl = _extractAttribute(line, 'tvg-logo');
         currentGroup = _extractAttribute(line, 'group-title');
-        currentId = _extractAttribute(line, 'tvg-id') ?? DateTime.now().microsecondsSinceEpoch.toString();
+        
+        // Extraer xui-id primero, luego tvg-id
+        currentId = _extractAttribute(line, 'xui-id');
+        if (currentId == null || currentId.trim().isEmpty) {
+          currentId = _extractAttribute(line, 'tvg-id');
+        }
+        if (currentId != null && currentId.trim().isEmpty) {
+          currentId = null;
+        }
       } else if (!line.startsWith('#')) {
         // This is likely the URL
         if (currentName != null) {
+          final uniqueId = currentId != null ? '${currentId}_${line.trim()}' : line.trim();
           channels.add(ChannelModel(
-            id: currentId ?? DateTime.now().microsecondsSinceEpoch.toString(),
+            id: uniqueId, // Guarantee uniqueness by including the URL
             name: currentName,
             url: line,
             logoUrl: currentLogoUrl ?? '',

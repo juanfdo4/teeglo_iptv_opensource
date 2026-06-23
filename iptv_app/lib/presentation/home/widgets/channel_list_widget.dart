@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/channel.dart';
 import '../../player/pages/video_player_screen.dart';
+import '../providers/favorites_provider.dart';
 
 class ChannelListWidget extends StatefulWidget {
   final List<Channel> channels;
@@ -132,6 +134,20 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
                       subtitle: Text(
                         channel.group,
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: Consumer(
+                        builder: (context, ref, child) {
+                          final isFav = ref.watch(favoritesProvider).any((c) => c.id == channel.id);
+                          return IconButton(
+                            icon: Icon(
+                              isFav ? Icons.favorite : Icons.favorite_border,
+                              color: Colors.red,
+                            ),
+                            onPressed: () {
+                              ref.read(favoritesProvider.notifier).toggleFavorite(channel);
+                            },
+                          );
+                        },
                       ),
                       onTap: () {
                         Navigator.push(
