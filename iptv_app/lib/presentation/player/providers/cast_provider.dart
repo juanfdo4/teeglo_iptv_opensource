@@ -7,6 +7,7 @@ import '../services/iptv_hls_proxy.dart';
 import 'playback_progress_provider.dart';
 import 'package:flutter_background/flutter_background.dart';
 import 'dart:io';
+import '../../../main.dart';
 
 final _iptvHlsProxy = IptvHlsProxy();
 
@@ -370,6 +371,10 @@ class CastNotifier extends Notifier<CastState> {
           progressService.saveProgress(url, position, duration);
         }
       });
+      
+      // Conectar el CastSession al AudioService (para mostrar la notificación con controles)
+      audioHandler.attachSession(session, title, "Transmisión a TV");
+      
     } catch (e) {
       debugPrint('CAST_LOG: Error al cargar media - $e');
       await _iptvHlsProxy.stop();
@@ -387,6 +392,7 @@ class CastNotifier extends Notifier<CastState> {
       await state.session!.disconnect();
       _stateSubscription?.cancel();
     }
+    audioHandler.detachSession();
     state = CastState();
   }
 }

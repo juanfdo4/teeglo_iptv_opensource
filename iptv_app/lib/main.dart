@@ -2,13 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:audio_service/audio_service.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/home/pages/main_dashboard.dart';
+import 'presentation/player/services/cast_audio_handler.dart';
+
+late CastAudioHandler audioHandler;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   MediaKit.ensureInitialized();
+  
+  // Initialize audio_service for media controls
+  audioHandler = await AudioService.init(
+    builder: () => CastAudioHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.teeglo.iptv.channel.audio',
+      androidNotificationChannelName: 'IPTV Playback',
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true,
+    ),
+  );
   
   // Open boxes
   await Hive.openBox('playlists');

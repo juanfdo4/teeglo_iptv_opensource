@@ -81,6 +81,17 @@ class IptvHlsProxy {
 
     // Usar el directorio de caché de la app — siempre disponible en Android/iOS/macOS
     final cacheDir = await getTemporaryDirectory();
+    
+    // Limpiar cachés anteriores para liberar espacio
+    try {
+      final oldDirs = cacheDir.listSync().where((e) => e.path.contains('iptv_hls_'));
+      for (final oldDir in oldDirs) {
+        if (oldDir is Directory) {
+          oldDir.deleteSync(recursive: true);
+        }
+      }
+    } catch (_) {}
+
     final hlsDirPath = '${cacheDir.path}/iptv_hls_${DateTime.now().millisecondsSinceEpoch}';
     final dir = Directory(hlsDirPath);
     dir.createSync(recursive: true);
@@ -119,11 +130,12 @@ class IptvHlsProxy {
       // Video: desentrelazar + recodificar a H.264 progresivo Chromecast-compatible
       '-vf', 'yadif=mode=1',
       '-c:v', 'libx264',
-      '-preset', 'veryfast',
+      '-preset', 'ultrafast',
+      '-tune', 'zerolatency',
       '-profile:v', 'high',
       '-level:v', '4.1',
       '-pix_fmt', 'yuv420p',
-      '-g', '50',           // keyframe cada 2s @ 25fps → cortes HLS limpios
+      '-g', '60',           // keyframe cada ~2s (asumiendo 30fps) → cortes HLS limpios y rápidos
       '-sc_threshold', '0',
       // Audio: AAC-LC estéreo (requerido por Chromecast)
       '-c:a', 'aac',
@@ -132,8 +144,8 @@ class IptvHlsProxy {
       '-ar', '44100',
       // Salida HLS rolling live
       '-f', 'hls',
-      '-hls_time', '4',
-      '-hls_list_size', '6',
+      '-hls_time', '2',
+      '-hls_list_size', '5',
       '-hls_flags', 'delete_segments+append_list',
       '-hls_allow_cache', '0',
       '-hls_segment_type', 'mpegts',
