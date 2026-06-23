@@ -24,6 +24,10 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Image.asset('assets/images/logo.png'),
+        ),
         title: _buildAppBarTitle(activePlaylistAsync, allPlaylistsAsync),
         actions: const [
           CastStatusIndicator(),

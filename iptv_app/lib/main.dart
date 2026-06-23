@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:audio_service/audio_service.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/home/pages/main_dashboard.dart';
+import 'presentation/splash/splash_screen.dart';
 import 'presentation/player/services/cast_audio_handler.dart';
 
 late CastAudioHandler audioHandler;
@@ -57,7 +58,7 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system, // Switch automatically based on OS setting
-      home: const MainDashboard(),
+      home: const SplashScreen(nextScreen: MainDashboard()),
     );
   }
 }
