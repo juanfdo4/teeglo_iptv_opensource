@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../domain/entities/channel.dart';
 import '../../player/pages/video_player_screen.dart';
 
@@ -40,7 +41,7 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
   @override
   Widget build(BuildContext context) {
     if (widget.channels.isEmpty) {
-      return const Center(child: Text('No content available.'));
+      return const Center(child: Text('No content available.')).animate().fadeIn(duration: 400.ms);
     }
 
     // Filter by Category
@@ -54,6 +55,9 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
       filteredChannels = filteredChannels.where((c) => c.name.toLowerCase().contains(q)).toList();
     }
 
+    // Siempre ordenar alfabéticamente
+    filteredChannels.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
     return Column(
       children: [
         // Search Bar
@@ -61,7 +65,7 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
           padding: const EdgeInsets.all(8.0),
           child: TextField(
             decoration: InputDecoration(
-              hintText: 'Search channels...',
+              hintText: 'Buscar canales...',
               prefixIcon: const Icon(Icons.search),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -72,7 +76,7 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
               });
             },
           ),
-        ),
+        ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2, end: 0),
         // Categories Horizontal List
         SizedBox(
           height: 50,
@@ -88,6 +92,7 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
                 child: ChoiceChip(
                   label: Text(category.isEmpty ? 'Uncategorized' : category),
                   selected: isSelected,
+                  selectedColor: Colors.blue.withValues(alpha: 0.3),
                   onSelected: (selected) {
                     if (selected) {
                       setState(() {
@@ -96,7 +101,7 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
                     }
                   },
                 ),
-              );
+              ).animate(delay: (index * 50).ms).fadeIn(duration: 300.ms).slideX(begin: 0.2, end: 0);
             },
           ),
         ),
@@ -104,20 +109,25 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
         // Channels List
         Expanded(
           child: filteredChannels.isEmpty
-              ? const Center(child: Text('No matches found.'))
+              ? const Center(child: Text('No matches found.')).animate().fadeIn()
               : ListView.builder(
+                  // Use a key to force re-animation when category changes
+                  key: ValueKey(_selectedCategory + _searchQuery),
                   itemCount: filteredChannels.length,
                   itemBuilder: (context, index) {
                     final channel = filteredChannels[index];
                     return ListTile(
-                      leading: channel.logoUrl.isNotEmpty
-                          ? Image.network(
-                              channel.logoUrl,
-                              width: 50,
-                              height: 50,
-                              errorBuilder: (ctx, err, stack) => const Icon(Icons.tv),
-                            )
-                          : const Icon(Icons.tv),
+                      leading: Hero(
+                        tag: 'logo_${channel.id}',
+                        child: channel.logoUrl.isNotEmpty
+                            ? Image.network(
+                                channel.logoUrl,
+                                width: 50,
+                                height: 50,
+                                errorBuilder: (ctx, err, stack) => const Icon(Icons.tv),
+                              )
+                            : const Icon(Icons.tv),
+                      ),
                       title: Text(channel.name),
                       subtitle: Text(
                         channel.group,
@@ -131,7 +141,7 @@ class _ChannelListWidgetState extends State<ChannelListWidget> {
                           ),
                         );
                       },
-                    );
+                    ).animate(delay: (index.clamp(0, 20) * 30).ms).fadeIn(duration: 400.ms).slideX(begin: 0.1, end: 0);
                   },
                 ),
         ),

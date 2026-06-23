@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/active_playlist_provider.dart';
 import '../providers/home_provider.dart';
 import '../widgets/channel_list_widget.dart';
+import '../widgets/cast_status_indicator.dart';
 import 'playlist_manager_page.dart';
 import 'favorites_page.dart';
 
@@ -24,6 +25,9 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: _buildAppBarTitle(activePlaylistAsync, allPlaylistsAsync),
+        actions: const [
+          CastStatusIndicator(),
+        ],
       ),
       body: _buildBody(activePlaylistAsync),
       bottomNavigationBar: BottomNavigationBar(

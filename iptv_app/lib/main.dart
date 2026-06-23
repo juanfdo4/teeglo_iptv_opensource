@@ -15,6 +15,7 @@ void main() async {
   await Hive.openBox('favorites');
   await Hive.openBox('history');
   await Hive.openBox('settings');
+  await Hive.openBox('playback_progress');
 
   runApp(
     // Added ProviderScope for Riverpod state management

@@ -8,13 +8,15 @@ class FavoritesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final favorites = ref.watch(favoritesProvider);
+    final favorites = ref.watch(favoritesProvider).toList();
 
     if (favorites.isEmpty) {
       return const Center(
         child: Text('No favorites yet. Tap the heart icon in the player!'),
       );
     }
+
+    favorites.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     return ListView.builder(
       itemCount: favorites.length,
