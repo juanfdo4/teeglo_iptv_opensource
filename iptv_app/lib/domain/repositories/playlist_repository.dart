@@ -6,6 +6,9 @@ abstract class PlaylistRepository {
   /// Fetches a playlist from the given [url] and optionally saves it locally with [name].
   Future<Either<Failure, Playlist>> fetchPlaylist(String name, String url);
 
+  /// Adds a playlist directly from M3U string content (useful for local files).
+  Future<Either<Failure, Playlist>> addPlaylistFromContent(String name, String content);
+
   /// Retrieves all locally saved playlists.
   Future<Either<Failure, List<Playlist>>> getLocalPlaylists();
 

@@ -15,7 +15,7 @@ class PlaylistModel extends Playlist {
       name: json['name'] ?? '',
       url: json['url'] ?? '',
       channels: (json['channels'] as List<dynamic>?)
-              ?.map((e) => ChannelModel.fromJson(e as Map<String, dynamic>))
+              ?.map((e) => ChannelModel.fromJson(Map<String, dynamic>.from(e as Map)))
               .toList() ??
           [],
     );

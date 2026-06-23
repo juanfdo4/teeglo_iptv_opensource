@@ -5,8 +5,8 @@ import '../../domain/entities/playlist.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../datasources/playlist_local_data_source.dart';
 import '../datasources/playlist_remote_data_source.dart';
-import '../models/channel_model.dart';
 import '../models/playlist_model.dart';
+import '../utils/m3u_parser.dart';
 
 class PlaylistRepositoryImpl implements PlaylistRepository {
   final PlaylistRemoteDataSource remoteDataSource;
@@ -22,8 +22,10 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     try {
       final m3uContent = await remoteDataSource.fetchM3uContent(url);
       
-      // Basic mock parser
-      final channels = _parseM3u(m3uContent);
+      final channels = M3uParser.parse(m3uContent);
+      if (channels.isEmpty) {
+        throw ParsingException('No channels found or invalid format');
+      }
       
       final playlist = PlaylistModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -36,6 +38,32 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       return Right(playlist);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
+    } on ParsingException catch (e) {
+      return Left(ParsingFailure(e.message));
+    } on LocalStorageException catch (e) {
+      return Left(LocalStorageFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, Playlist>> addPlaylistFromContent(String name, String content) async {
+    try {
+      final channels = M3uParser.parse(content);
+      if (channels.isEmpty) {
+        throw ParsingException('No channels found or invalid format');
+      }
+      
+      final playlist = PlaylistModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: name,
+        url: 'local',
+        channels: channels,
+      );
+
+      await localDataSource.savePlaylist(playlist);
+      return Right(playlist);
     } on ParsingException catch (e) {
       return Left(ParsingFailure(e.message));
     } on LocalStorageException catch (e) {
@@ -63,23 +91,5 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     } on LocalStorageException catch (e) {
       return Left(LocalStorageFailure(e.message));
     }
-  }
-
-  List<ChannelModel> _parseM3u(String content) {
-    // Implement real m3u parsing logic here
-    if (!content.contains('#EXTM3U')) {
-      throw ParsingException('Invalid M3U format');
-    }
-    
-    // Mock parsing
-    return [
-      const ChannelModel(
-        id: '1',
-        name: 'Mock Channel',
-        url: 'http://mock.url',
-        logoUrl: '',
-        group: 'Mock Group',
-      ),
-    ];
   }
 }
