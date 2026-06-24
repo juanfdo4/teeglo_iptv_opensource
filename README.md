@@ -64,13 +64,16 @@ This project is provided **as-is** for educational and personal use. Teeglo IPTV
   <img src="docs/images_app/1.Load.png" width="22%" />
   <img src="docs/images_app/2.Principal.png" width="22%" />
   <img src="docs/images_app/3.peliculas.png" width="22%" />
-  <img src="docs/images_app/4.series.png" width="22%" />
 </p>
 <p align="center">
+  <img src="docs/images_app/4.series.png" width="22%" />
   <img src="docs/images_app/6.tv_online.png" width="22%" />
   <img src="docs/images_app/7.tv-cast.png" width="22%" />
+</p>
+<p align="center">
   <img src="docs/images_app/5.favoritos.png" width="22%" />
   <img src="docs/images_app/9.listas.png" width="22%" />
+  <img src="docs/images_app/10.config.png" width="22%" />
 </p>
 
 ---
