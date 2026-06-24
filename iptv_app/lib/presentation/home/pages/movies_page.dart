@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../core/theme/app_theme.dart';
 import '../widgets/content_card.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../player/providers/playback_progress_provider.dart';
+
+List<String> _extractCategoriesWorker(List<Channel> movies) {
+  return ['Todos', ...movies.map((c) => c.group).toSet().toList()..sort()];
+}
 
 class MoviesPage extends ConsumerStatefulWidget {
   final List<Channel> movies;
@@ -19,9 +24,31 @@ class _MoviesPageState extends ConsumerState<MoviesPage> {
   String _searchQuery = '';
   String _selectedCategory = 'Todos';
 
+  bool _isLoading = true;
+  late List<String> _categories;
+
+  @override
+  void initState() {
+    super.initState();
+    _processData();
+  }
+
+  Future<void> _processData() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final cats = await compute(_extractCategoriesWorker, widget.movies);
+    if (mounted) {
+      setState(() {
+        _categories = cats;
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final categories = ['Todos', ...widget.movies.map((c) => c.group).toSet().toList()..sort()];
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.teegloCyan));
+    }
 
     final filteredMovies = widget.movies.where((movie) {
       final matchesSearch = movie.name.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -32,25 +59,24 @@ class _MoviesPageState extends ConsumerState<MoviesPage> {
     ref.watch(playbackProgressProvider); // Rebuilds when state (int) changes
     final progressService = ref.read(playbackProgressProvider.notifier);
 
+    // Cache weights to avoid DB calls in sort
+    final weights = <String, int>{};
+    for (final m in filteredMovies) {
+      final isWatched = progressService.isWatched(m.url);
+      final prog = progressService.getProgress(m.url);
+      if (isWatched) {
+        weights[m.url] = 3;
+      } else if (prog != null && prog.inSeconds > 0) {
+        weights[m.url] = 1;
+      } else {
+        weights[m.url] = 2;
+      }
+    }
+
     filteredMovies.sort((a, b) {
-      final aWatched = progressService.isWatched(a.url);
-      final bWatched = progressService.isWatched(b.url);
-      final aProg = progressService.getProgress(a.url);
-      final bProg = progressService.getProgress(b.url);
-      
-      int getWeight(bool watched, Duration? prog) {
-        if (watched) return 3; // Fully watched goes to bottom
-        if (prog != null && prog.inSeconds > 0) return 1; // In progress goes to top
-        return 2; // Unwatched in middle
-      }
-      
-      final weightA = getWeight(aWatched, aProg);
-      final weightB = getWeight(bWatched, bProg);
-      
-      if (weightA != weightB) {
-        return weightA.compareTo(weightB);
-      }
-      
+      final wA = weights[a.url] ?? 2;
+      final wB = weights[b.url] ?? 2;
+      if (wA != wB) return wA.compareTo(wB);
       return a.name.compareTo(b.name);
     });
 
@@ -80,9 +106,9 @@ class _MoviesPageState extends ConsumerState<MoviesPage> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: categories.length,
+            itemCount: _categories.length,
             itemBuilder: (context, index) {
-              final category = categories[index];
+              final category = _categories[index];
               final isSelected = category == _selectedCategory;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -92,7 +118,7 @@ class _MoviesPageState extends ConsumerState<MoviesPage> {
                   onSelected: (selected) {
                     if (selected) setState(() => _selectedCategory = category);
                   },
-                  selectedColor: AppTheme.teegloCyan.withOpacity(0.2),
+                  selectedColor: AppTheme.teegloCyan.withValues(alpha: 0.2),
                   backgroundColor: AppTheme.bgSurface,
                   labelStyle: TextStyle(
                     color: isSelected ? AppTheme.teegloCyan : AppTheme.textSecondary,

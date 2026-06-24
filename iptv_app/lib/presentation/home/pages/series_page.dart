@@ -1,10 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../core/theme/app_theme.dart';
 import 'series_detail_page.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../player/providers/playback_progress_provider.dart';
+
+class _SeriesDataResult {
+  final Map<String, List<Channel>> groupedSeries;
+  final List<Channel> uniqueSeriesList;
+  final List<String> categories;
+
+  _SeriesDataResult(this.groupedSeries, this.uniqueSeriesList, this.categories);
+}
+
+_SeriesDataResult _groupSeriesWorker(List<Channel> episodes) {
+  final groupedSeries = <String, List<Channel>>{};
+  for (final ep in episodes) {
+    final key = ep.seriesName ?? ep.name;
+    groupedSeries.putIfAbsent(key, () => []).add(ep);
+  }
+
+  final uniqueSeriesList = groupedSeries.values.map((eps) {
+    eps.sort((a, b) {
+      final sComp = (a.season ?? 0).compareTo(b.season ?? 0);
+      if (sComp != 0) return sComp;
+      return (a.episode ?? 0).compareTo(b.episode ?? 0);
+    });
+    return eps.first;
+  }).toList();
+
+  final categories = ['Todos', ...uniqueSeriesList.map((c) => c.group).toSet().toList()..sort()];
+
+  return _SeriesDataResult(groupedSeries, uniqueSeriesList, categories);
+}
 
 class SeriesPage extends ConsumerStatefulWidget {
   final List<Channel> seriesEpisodes;
@@ -19,63 +49,77 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
   String _searchQuery = '';
   String _selectedCategory = 'Todos';
 
+  bool _isLoading = true;
+  late Map<String, List<Channel>> _groupedSeries;
+  late List<Channel> _uniqueSeriesList;
+  late List<String> _categories;
+
+  @override
+  void initState() {
+    super.initState();
+    _processData();
+  }
+
+  Future<void> _processData() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final result = await compute(_groupSeriesWorker, widget.seriesEpisodes);
+    if (mounted) {
+      setState(() {
+        _groupedSeries = result.groupedSeries;
+        _uniqueSeriesList = result.uniqueSeriesList;
+        _categories = result.categories;
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Group episodes by seriesName
-    final groupedSeries = <String, List<Channel>>{};
-    for (final ep in widget.seriesEpisodes) {
-      final key = ep.seriesName ?? ep.name;
-      groupedSeries.putIfAbsent(key, () => []).add(ep);
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.teegloCyan));
     }
 
-    // Convert to a list of "Series" objects (using the first episode for metadata)
-    final uniqueSeriesList = groupedSeries.values.map((episodes) {
-      // Sort episodes by season and then episode
-      episodes.sort((a, b) {
-        final sComp = (a.season ?? 0).compareTo(b.season ?? 0);
-        if (sComp != 0) return sComp;
-        return (a.episode ?? 0).compareTo(b.episode ?? 0);
-      });
-      return episodes.first; // Representative episode for the series card
-    }).toList();
-
-    // Extract categories based on the representative episode
-    final categories = ['Todos', ...uniqueSeriesList.map((c) => c.group).toSet().toList()..sort()];
-
-    final filteredSeries = uniqueSeriesList.where((series) {
+    final filteredSeries = _uniqueSeriesList.where((series) {
       final seriesName = series.seriesName ?? series.name;
       final matchesSearch = seriesName.toLowerCase().contains(_searchQuery.toLowerCase());
       final matchesCategory = _selectedCategory == 'Todos' || series.group == _selectedCategory;
       return matchesSearch && matchesCategory;
     }).toList();
 
-    ref.watch(playbackProgressProvider); // Rebuilds when state (int) changes
+    ref.watch(playbackProgressProvider); // Rebuilds when state changes
     final progressService = ref.read(playbackProgressProvider.notifier);
+
+    // Cache weights to avoid hitting the local DB inside the sort loop
+    final weights = <String, int>{};
+    final progresses = <String, double>{};
+    
+    for (final series in filteredSeries) {
+      final seriesName = series.seriesName ?? series.name;
+      final allEpisodes = _groupedSeries[seriesName]!;
+      final prog = progressService.getSeriesProgress(allEpisodes);
+      
+      progresses[seriesName] = prog['progressPercent'] as double;
+      if (prog['isWatched']) {
+        weights[seriesName] = 3; // Watched at bottom
+      } else if ((prog['progressPercent'] as double) > 0) {
+        weights[seriesName] = 1; // In progress at top
+      } else {
+        weights[seriesName] = 2; // Unwatched in middle
+      }
+    }
 
     // Sort: In Progress > Unwatched > Watched
     filteredSeries.sort((a, b) {
       final aName = a.seriesName ?? a.name;
       final bName = b.seriesName ?? b.name;
       
-      final aProgress = progressService.getSeriesProgress(groupedSeries[aName]!);
-      final bProgress = progressService.getSeriesProgress(groupedSeries[bName]!);
+      final wA = weights[aName] ?? 2;
+      final wB = weights[bName] ?? 2;
       
-      int getWeight(Map<String, dynamic> prog) {
-        if (prog['isWatched']) return 3; // Fully watched goes to bottom
-        if (prog['progressPercent'] > 0) return 1; // In progress goes to top
-        return 2; // Unwatched in middle
-      }
+      if (wA != wB) return wA.compareTo(wB);
       
-      final weightA = getWeight(aProgress);
-      final weightB = getWeight(bProgress);
-      
-      if (weightA != weightB) {
-        return weightA.compareTo(weightB);
-      }
-      
-      // Secondary sort: if both in progress, sort by higher progress first?
-      if (weightA == 1 && weightB == 1) {
-        return (bProgress['progressPercent'] as double).compareTo(aProgress['progressPercent'] as double);
+      if (wA == 1) {
+        return (progresses[bName] ?? 0).compareTo(progresses[aName] ?? 0);
       }
       
       return aName.compareTo(bName);
@@ -107,9 +151,9 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: categories.length,
+            itemCount: _categories.length,
             itemBuilder: (context, index) {
-              final category = categories[index];
+              final category = _categories[index];
               final isSelected = category == _selectedCategory;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -119,7 +163,7 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                   onSelected: (selected) {
                     if (selected) setState(() => _selectedCategory = category);
                   },
-                  selectedColor: AppTheme.teegloCyan.withOpacity(0.2),
+                  selectedColor: AppTheme.teegloCyan.withValues(alpha: 0.2),
                   backgroundColor: AppTheme.bgSurface,
                   labelStyle: TextStyle(
                     color: isSelected ? AppTheme.teegloCyan : AppTheme.textSecondary,
@@ -150,10 +194,9 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                   itemBuilder: (context, index) {
                     final seriesRep = filteredSeries[index];
                     final seriesName = seriesRep.seriesName ?? seriesRep.name;
-                    final allEpisodes = groupedSeries[seriesName]!;
-                    final seriesProgressInfo = progressService.getSeriesProgress(allEpisodes);
-                    final isWatched = seriesProgressInfo['isWatched'];
-                    final progressPercent = seriesProgressInfo['progressPercent'] as double;
+                    final allEpisodes = _groupedSeries[seriesName]!;
+                    final isWatched = weights[seriesName] == 3;
+                    final progressPercent = progresses[seriesName] ?? 0.0;
 
                     return GestureDetector(
                       onLongPress: () {
@@ -220,7 +263,7 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.7),
+                                    color: Colors.black.withValues(alpha: 0.7),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(Icons.check, color: Colors.greenAccent, size: 14),
@@ -240,7 +283,7 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                                     end: Alignment.bottomCenter,
                                     colors: [
                                       Colors.transparent,
-                                      Colors.black.withOpacity(0.8),
+                                      Colors.black.withValues(alpha: 0.8),
                                       Colors.black,
                                     ],
                                   ),

@@ -31,12 +31,41 @@ class PlaylistManagerPage extends ConsumerWidget {
                 ),
                 title: Text(playlist.name),
                 subtitle: Text('${playlist.channels.length} channels'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () async {
-                    await ref.read(playlistRepositoryProvider).deletePlaylist(playlist.id);
-                    ref.invalidate(localPlaylistsProvider);
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (playlist.url.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.blue),
+                        onPressed: () async {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Actualizando ${playlist.name}...')),
+                          );
+                          final result = await ref.read(playlistRepositoryProvider).fetchPlaylist(playlist.name, playlist.url);
+                          
+                          if (context.mounted) {
+                            result.fold(
+                              (failure) => ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error: ${failure.message}')),
+                              ),
+                              (_) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('${playlist.name} actualizada con éxito!')),
+                                );
+                                ref.invalidate(localPlaylistsProvider);
+                              },
+                            );
+                          }
+                        },
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () async {
+                        await ref.read(playlistRepositoryProvider).deletePlaylist(playlist.id);
+                        ref.invalidate(localPlaylistsProvider);
+                      },
+                    ),
+                  ],
                 ),
                 onTap: () {
                   ref.read(activePlaylistIdProvider.notifier).setActivePlaylist(playlist.id);
