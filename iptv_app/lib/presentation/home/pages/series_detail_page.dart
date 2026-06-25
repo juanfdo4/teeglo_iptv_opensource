@@ -77,7 +77,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          AppTheme.bgDark.withOpacity(0.8),
+                          AppTheme.bgDark.withValues(alpha: 0.8),
                           AppTheme.bgDark,
                         ],
                       ),
@@ -170,7 +170,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
                                   ? Container(
                                       padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.7),
+                                        color: Colors.black.withValues(alpha: 0.7),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(Icons.check, color: Colors.greenAccent, size: 24),

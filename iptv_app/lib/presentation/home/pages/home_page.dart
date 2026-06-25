@@ -91,8 +91,8 @@ class HomePage extends ConsumerWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                AppTheme.bgDark.withOpacity(0.1),
-                AppTheme.bgDark.withOpacity(0.5),
+                AppTheme.bgDark.withValues(alpha: 0.1),
+                AppTheme.bgDark.withValues(alpha: 0.5),
                 AppTheme.bgDark,
               ],
               stops: const [0.0, 0.6, 1.0],
@@ -181,7 +181,7 @@ class HomePage extends ConsumerWidget {
                     icon: Icon(isFav ? Icons.check : Icons.add, color: Colors.white),
                     label: const Text('Mi Lista', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withOpacity(0.2),
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),

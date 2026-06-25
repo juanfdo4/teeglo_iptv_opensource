@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../core/theme/app_theme.dart';
+import '../widgets/category_selector_widget.dart';
 import 'series_detail_page.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,7 +20,19 @@ _SeriesDataResult _groupSeriesWorker(List<Channel> episodes) {
   final groupedSeries = <String, List<Channel>>{};
   for (final ep in episodes) {
     final key = ep.seriesName ?? ep.name;
-    groupedSeries.putIfAbsent(key, () => []).add(ep);
+    final list = groupedSeries.putIfAbsent(key, () => []);
+    
+    // Evitar episodios duplicados que vienen de diferentes categorías del proveedor
+    final isDuplicate = list.any((existing) {
+      if (ep.season != null && ep.episode != null && existing.season != null && existing.episode != null) {
+        return existing.season == ep.season && existing.episode == ep.episode;
+      }
+      return existing.name.trim().toLowerCase() == ep.name.trim().toLowerCase();
+    });
+    
+    if (!isDuplicate) {
+      list.add(ep);
+    }
   }
 
   final uniqueSeriesList = groupedSeries.values.map((eps) {
@@ -145,36 +158,13 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
           ),
         ),
 
-        // Category Chips
-        SizedBox(
-          height: 50,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _categories.length,
-            itemBuilder: (context, index) {
-              final category = _categories[index];
-              final isSelected = category == _selectedCategory;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(category),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) setState(() => _selectedCategory = category);
-                  },
-                  selectedColor: AppTheme.teegloCyan.withValues(alpha: 0.2),
-                  backgroundColor: AppTheme.bgSurface,
-                  labelStyle: TextStyle(
-                    color: isSelected ? AppTheme.teegloCyan : AppTheme.textSecondary,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                  side: BorderSide(
-                    color: isSelected ? AppTheme.teegloCyan : Colors.transparent,
-                  ),
-                ),
-              );
-            },
+        // Category Selector (New Dropdown-like UI)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: CategorySelectorWidget(
+            categories: _categories,
+            selectedCategory: _selectedCategory,
+            onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
           ),
         ),
 

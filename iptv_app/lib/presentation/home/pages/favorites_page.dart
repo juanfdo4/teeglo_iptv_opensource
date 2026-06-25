@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/channel.dart';
 import '../providers/favorites_provider.dart';
+import '../providers/active_playlist_provider.dart';
 import '../widgets/content_card.dart';
 
 class FavoritesPage extends ConsumerWidget {
@@ -9,16 +10,30 @@ class FavoritesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final favoritesAsync = ref.watch(favoritesProvider);
+    final allFavorites = ref.watch(favoritesProvider);
+    final activePlaylistAsync = ref.watch(activePlaylistProvider);
 
-    if (favoritesAsync.isEmpty) {
+    if (allFavorites.isEmpty) {
       return const Center(child: Text('Aún no has agregado nada a tu lista'));
     }
 
+    List<Channel> currentFavorites = [];
+    
+    activePlaylistAsync.whenData((playlist) {
+      if (playlist != null) {
+        final playlistChannelIds = Set.from(playlist.channels.map((c) => c.id));
+        currentFavorites = allFavorites.where((f) => playlistChannelIds.contains(f.id)).toList();
+      }
+    });
+
+    if (currentFavorites.isEmpty) {
+      return const Center(child: Text('No hay favoritos en esta lista'));
+    }
+
     // Separate into categories for better display
-    final live = favoritesAsync.where((c) => c.contentType == ContentType.live).toList();
-    final movies = favoritesAsync.where((c) => c.contentType == ContentType.movie).toList();
-    final series = favoritesAsync.where((c) => c.contentType == ContentType.series).toList();
+    final live = currentFavorites.where((c) => c.contentType == ContentType.live).toList();
+    final movies = currentFavorites.where((c) => c.contentType == ContentType.movie).toList();
+    final series = currentFavorites.where((c) => c.contentType == ContentType.series).toList();
 
     return SingleChildScrollView(
       child: Column(

@@ -1,9 +1,24 @@
 
+import 'dart:isolate';
 import '../models/channel_model.dart';
 import '../../domain/entities/channel.dart';
 
+class ParseRequest {
+  final String content;
+  final SendPort? progressPort;
+  ParseRequest(this.content, this.progressPort);
+}
+
 class M3uParser {
+  static List<ChannelModel> parseWithProgress(ParseRequest request) {
+    return _parseInternal(request.content, request.progressPort);
+  }
+
   static List<ChannelModel> parse(String content) {
+    return _parseInternal(content, null);
+  }
+
+  static List<ChannelModel> _parseInternal(String content, SendPort? progressPort) {
     if (!content.trim().startsWith('#EXTM3U')) {
       return [];
     }
@@ -69,13 +84,22 @@ class M3uParser {
             year: year,
           ));
           
+          
           // Reset for the next channel
           currentName = null;
           currentLogoUrl = null;
           currentGroup = null;
           currentId = null;
+
+          if (progressPort != null && channels.length % 500 == 0) {
+            progressPort.send(channels.length);
+          }
         }
       }
+    }
+
+    if (progressPort != null) {
+      progressPort.send(channels.length);
     }
 
     return channels;

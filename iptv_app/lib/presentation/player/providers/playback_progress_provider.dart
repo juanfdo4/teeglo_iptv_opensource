@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../domain/entities/channel.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 final playbackProgressProvider = NotifierProvider<PlaybackProgressNotifier, int>(() {
   return PlaybackProgressNotifier();
@@ -14,33 +16,41 @@ class PlaybackProgressNotifier extends Notifier<int> {
     return 0;
   }
 
+  String _getKey(String url) {
+    return md5.convert(utf8.encode(url)).toString();
+  }
+
   void saveProgress(String url, Duration position, Duration duration) {
     if (duration.inSeconds == 0) return;
     
+    final key = _getKey(url);
+    
     // Si ya vio más del 90%, lo marcamos como completado (watched)
     if (position.inSeconds > duration.inSeconds * 0.90) {
-      _box.put('${url}_watched', true);
-      _box.delete(url); // Remove partial progress since it's practically finished
-      _box.delete('${url}_duration');
+      _box.put('${key}_watched', true);
+      _box.delete(key); // Remove partial progress since it's practically finished
+      _box.delete('${key}_duration');
       state++;
     } 
     // Si vio más del 5% y no está terminado, guardamos el progreso
     else if (position.inSeconds > duration.inSeconds * 0.05) {
-      _box.put(url, position.inSeconds);
-      _box.put('${url}_duration', duration.inSeconds);
+      _box.put(key, position.inSeconds);
+      _box.put('${key}_duration', duration.inSeconds);
       state++;
     }
   }
 
   /// Retorna verdadero si el contenido ya fue visto completamente (>90%)
   bool isWatched(String url) {
-    return _box.get('${url}_watched', defaultValue: false) as bool;
+    final key = _getKey(url);
+    return _box.get('${key}_watched', defaultValue: false) as bool;
   }
 
 
   /// Retorna el progreso guardado en segundos, o nulo si no hay progreso
   Duration? getProgress(String url) {
-    final seconds = _box.get(url) as int?;
+    final key = _getKey(url);
+    final seconds = _box.get(key) as int?;
     if (seconds != null && seconds > 0) {
       return Duration(seconds: seconds);
     }
@@ -49,7 +59,8 @@ class PlaybackProgressNotifier extends Notifier<int> {
 
   /// Retorna la duración guardada en segundos, o nulo si no hay
   Duration? getDuration(String url) {
-    final seconds = _box.get('${url}_duration') as int?;
+    final key = _getKey(url);
+    final seconds = _box.get('${key}_duration') as int?;
     if (seconds != null && seconds > 0) {
       return Duration(seconds: seconds);
     }
@@ -58,40 +69,45 @@ class PlaybackProgressNotifier extends Notifier<int> {
 
   /// Elimina el progreso guardado
   void clearProgress(String url) {
-    _box.delete(url);
-    _box.delete('${url}_duration');
-    _box.delete('${url}_watched');
+    final key = _getKey(url);
+    _box.delete(key);
+    _box.delete('${key}_duration');
+    _box.delete('${key}_watched');
     state++;
   }
 
   void markAsWatched(String url) {
-    _box.put('${url}_watched', true);
-    _box.delete(url);
-    _box.delete('${url}_duration');
+    final key = _getKey(url);
+    _box.put('${key}_watched', true);
+    _box.delete(key);
+    _box.delete('${key}_duration');
     state++;
   }
 
   void markAsUnwatched(String url) {
-    _box.delete('${url}_watched');
-    _box.delete(url);
-    _box.delete('${url}_duration');
+    final key = _getKey(url);
+    _box.delete('${key}_watched');
+    _box.delete(key);
+    _box.delete('${key}_duration');
     state++;
   }
 
   void markSeriesAsWatched(List<Channel> episodes) {
     for (var ep in episodes) {
-      _box.put('${ep.url}_watched', true);
-      _box.delete(ep.url);
-      _box.delete('${ep.url}_duration');
+      final key = _getKey(ep.url);
+      _box.put('${key}_watched', true);
+      _box.delete(key);
+      _box.delete('${key}_duration');
     }
     state++;
   }
 
   void markSeriesAsUnwatched(List<Channel> episodes) {
     for (var ep in episodes) {
-      _box.delete('${ep.url}_watched');
-      _box.delete(ep.url);
-      _box.delete('${ep.url}_duration');
+      final key = _getKey(ep.url);
+      _box.delete('${key}_watched');
+      _box.delete(key);
+      _box.delete('${key}_duration');
     }
     state++;
   }

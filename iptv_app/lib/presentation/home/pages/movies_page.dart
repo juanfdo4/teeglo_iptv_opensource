@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../core/theme/app_theme.dart';
 import '../widgets/content_card.dart';
+import '../widgets/category_selector_widget.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../player/providers/playback_progress_provider.dart';
@@ -100,36 +101,13 @@ class _MoviesPageState extends ConsumerState<MoviesPage> {
           ),
         ),
 
-        // Category Chips
-        SizedBox(
-          height: 50,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _categories.length,
-            itemBuilder: (context, index) {
-              final category = _categories[index];
-              final isSelected = category == _selectedCategory;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(category),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) setState(() => _selectedCategory = category);
-                  },
-                  selectedColor: AppTheme.teegloCyan.withValues(alpha: 0.2),
-                  backgroundColor: AppTheme.bgSurface,
-                  labelStyle: TextStyle(
-                    color: isSelected ? AppTheme.teegloCyan : AppTheme.textSecondary,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                  side: BorderSide(
-                    color: isSelected ? AppTheme.teegloCyan : Colors.transparent,
-                  ),
-                ),
-              );
-            },
+        // Category Selector (New Dropdown-like UI)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: CategorySelectorWidget(
+            categories: _categories,
+            selectedCategory: _selectedCategory,
+            onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
           ),
         ),
 

@@ -27,8 +27,8 @@ void main() async {
   );
   
   // Open boxes
-  final playlistsBox = await Hive.openBox('playlists');
-  final favoritesBox = await Hive.openBox('favorites');
+  await Hive.openBox('playlists');
+  await Hive.openBox('favorites');
   await Hive.openBox('history');
   final settingsBox = await Hive.openBox('settings');
   await Hive.openBox('playback_progress');

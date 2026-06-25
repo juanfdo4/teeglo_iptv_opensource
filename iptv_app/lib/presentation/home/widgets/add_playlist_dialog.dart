@@ -23,6 +23,9 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isProcessing = false;
+  int _receivedBytes = 0;
+  int _totalBytes = 0;
 
   Future<void> _addRemotePlaylist() async {
     final name = _nameController.text.trim();
@@ -35,10 +38,29 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isProcessing = false;
+      _receivedBytes = 0;
+      _totalBytes = 0;
+    });
     
     final repo = ref.read(playlistRepositoryProvider);
-    final result = await repo.fetchPlaylist(name, url);
+    final result = await repo.fetchPlaylist(
+      name, 
+      url,
+      onReceiveProgress: (count, total) {
+        if (mounted) {
+          setState(() {
+            _receivedBytes = count;
+            _totalBytes = total;
+          });
+        }
+      },
+      onProcessingStarted: () {
+        if (mounted) setState(() => _isProcessing = true);
+      },
+    );
     
     setState(() => _isLoading = false);
 
@@ -66,13 +88,32 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isProcessing = false;
+      _receivedBytes = 0;
+      _totalBytes = 0;
+    });
     
     final cleanServerUrl = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
     final fullUrl = '$cleanServerUrl/get.php?username=$username&password=$password&type=m3u_plus&output=mpegts';
     
     final repo = ref.read(playlistRepositoryProvider);
-    final result = await repo.fetchPlaylist(name, fullUrl);
+    final result = await repo.fetchPlaylist(
+      name, 
+      fullUrl,
+      onReceiveProgress: (count, total) {
+        if (mounted) {
+          setState(() {
+            _receivedBytes = count;
+            _totalBytes = total;
+          });
+        }
+      },
+      onProcessingStarted: () {
+        if (mounted) setState(() => _isProcessing = true);
+      },
+    );
     
     setState(() => _isLoading = false);
 
@@ -99,13 +140,22 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
     final XFile? file = await openFile();
 
     if (file != null) {
-      setState(() => _isLoading = true);
+      setState(() {
+        _isLoading = true;
+        _isProcessing = true; // Local file processing
+      });
       
       try {
         final content = await file.readAsString();
         
         final repo = ref.read(playlistRepositoryProvider);
-        final repoResult = await repo.addPlaylistFromContent(name, content);
+        final repoResult = await repo.addPlaylistFromContent(
+          name, 
+          content,
+          onProcessingStarted: () {
+            if (mounted) setState(() => _isProcessing = true);
+          },
+        );
         
         repoResult.fold(
           (failure) => ScaffoldMessenger.of(context).showSnackBar(
@@ -139,7 +189,49 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<PlaylistInputType>(
+            if (_isLoading) ...[
+              const SizedBox(height: 16),
+              if (!_isProcessing && _totalBytes > 0) ...[
+                Text(
+                  'Descargando... ${(_receivedBytes / 1024 / 1024).toStringAsFixed(1)} MB / ${(_totalBytes / 1024 / 1024).toStringAsFixed(1)} MB',
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: _receivedBytes / _totalBytes,
+                  backgroundColor: Colors.white24,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${((_receivedBytes / _totalBytes) * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ] else if (!_isProcessing && _totalBytes <= 0) ...[
+                Text(
+                  'Descargando... ${(_receivedBytes / 1024 / 1024).toStringAsFixed(1)} MB',
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const LinearProgressIndicator(
+                  backgroundColor: Colors.white24,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+              ] else ...[
+                const Text(
+                  'Procesando canales... Por favor espera',
+                  style: TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator(color: Colors.blue)),
+              ],
+              const SizedBox(height: 16),
+            ] else ...[
+              SegmentedButton<PlaylistInputType>(
               segments: const [
                 ButtonSegment(
                   value: PlaylistInputType.xtream,
@@ -245,15 +337,13 @@ class _AddPlaylistDialogState extends ConsumerState<AddPlaylistDialog> {
                 style: TextStyle(color: Colors.grey, fontSize: 13),
               ),
             ]
-          ],
-        ),
+          ] // closes else
+        ], // closes children
+      ),
       ),
       actions: [
         if (_isLoading)
-          const Padding(
-            padding: EdgeInsets.only(right: 16.0),
-            child: CircularProgressIndicator(),
-          ),
+          const SizedBox.shrink(),
         if (!_isLoading) ...[
           TextButton(
             onPressed: () => Navigator.pop(context),

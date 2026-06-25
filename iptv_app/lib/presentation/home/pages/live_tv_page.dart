@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../core/theme/app_theme.dart';
 import '../widgets/content_card.dart';
+import '../widgets/category_selector_widget.dart';
 
 class LiveTvPage extends StatefulWidget {
   final List<Channel> channels;
@@ -48,36 +49,13 @@ class _LiveTvPageState extends State<LiveTvPage> {
           ),
         ),
 
-        // Category Chips
-        SizedBox(
-          height: 50,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: categories.length,
-            itemBuilder: (context, index) {
-              final category = categories[index];
-              final isSelected = category == _selectedCategory;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(category),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) setState(() => _selectedCategory = category);
-                  },
-                  selectedColor: AppTheme.teegloCyan.withOpacity(0.2),
-                  backgroundColor: AppTheme.bgSurface,
-                  labelStyle: TextStyle(
-                    color: isSelected ? AppTheme.teegloCyan : AppTheme.textSecondary,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                  side: BorderSide(
-                    color: isSelected ? AppTheme.teegloCyan : Colors.transparent,
-                  ),
-                ),
-              );
-            },
+        // Category Selector (New Dropdown-like UI)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: CategorySelectorWidget(
+            categories: categories,
+            selectedCategory: _selectedCategory,
+            onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
           ),
         ),
 

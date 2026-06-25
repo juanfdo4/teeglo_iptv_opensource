@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'package:dartz/dartz.dart';
 import '../../core/error/exceptions.dart';
 import '../../core/error/failures.dart';
@@ -6,6 +7,7 @@ import '../../domain/repositories/playlist_repository.dart';
 import '../datasources/playlist_local_data_source.dart';
 import '../datasources/playlist_remote_data_source.dart';
 import '../models/playlist_model.dart';
+import 'package:flutter/foundation.dart';
 import '../utils/m3u_parser.dart';
 
 class PlaylistRepositoryImpl implements PlaylistRepository {
@@ -18,11 +20,30 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   });
 
   @override
-  Future<Either<Failure, Playlist>> fetchPlaylist(String name, String url) async {
+  Future<Either<Failure, Playlist>> fetchPlaylist(
+    String name,
+    String url, {
+    void Function(int count, int total)? onReceiveProgress,
+    void Function()? onProcessingStarted,
+    void Function(int count)? onChannelsParsed,
+  }) async {
     try {
-      final m3uContent = await remoteDataSource.fetchM3uContent(url);
+      final m3uContent = await remoteDataSource.fetchM3uContent(url, onReceiveProgress: onReceiveProgress);
       
-      final channels = M3uParser.parse(m3uContent);
+      onProcessingStarted?.call();
+      
+      final receivePort = ReceivePort();
+      receivePort.listen((message) {
+        if (message is int) {
+          onChannelsParsed?.call(message);
+        }
+      });
+
+      // Parsear la lista pesada en un hilo secundario
+      final channels = await compute(M3uParser.parseWithProgress, ParseRequest(m3uContent, receivePort.sendPort));
+      
+      receivePort.close();
+      
       if (channels.isEmpty) {
         throw ParsingException('No channels found or invalid format');
       }
@@ -48,9 +69,26 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
-  Future<Either<Failure, Playlist>> addPlaylistFromContent(String name, String content) async {
+  Future<Either<Failure, Playlist>> addPlaylistFromContent(
+    String name,
+    String content, {
+    void Function()? onProcessingStarted,
+    void Function(int count)? onChannelsParsed,
+  }) async {
     try {
-      final channels = M3uParser.parse(content);
+      onProcessingStarted?.call();
+      
+      final receivePort = ReceivePort();
+      receivePort.listen((message) {
+        if (message is int) {
+          onChannelsParsed?.call(message);
+        }
+      });
+
+      final channels = await compute(M3uParser.parseWithProgress, ParseRequest(content, receivePort.sendPort));
+      
+      receivePort.close();
+      
       if (channels.isEmpty) {
         throw ParsingException('No channels found or invalid format');
       }
