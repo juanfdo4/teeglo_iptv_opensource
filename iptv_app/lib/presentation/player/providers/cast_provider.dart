@@ -92,33 +92,38 @@ final castDevicesProvider = StreamProvider<List<CastDevice>>((ref) {
       ? originalUrl.substring(0, originalUrl.indexOf('#'))
       : originalUrl;
 
-  // Extraer la extensión (ya sea la real al final, o la falsa en el fragmento)
-  final lowerOriginal = originalUrl.toLowerCase();
+  // Remover query params para la detección correcta de extensión
+  final urlWithoutQuery = cleanUrl.contains('?') 
+      ? cleanUrl.substring(0, cleanUrl.indexOf('?')) 
+      : cleanUrl;
+      
+  final lowerForDetection = urlWithoutQuery.toLowerCase();
 
   // PRIMERO: Respetar las pistas de formato. 
   // Si la app sabe que es MP4/MKV/M3U8 (por el fragmento o extensión), debemos enviar ese tipo
   // directamente al Chromecast SIN pasarlo por el proxy de MPEG-TS.
   // Los VODs (películas/series) usan URLs de token pero NO son MPEG-TS, son MP4/MKV.
-  if (lowerOriginal.endsWith('.m3u8')) {
+  if (lowerForDetection.endsWith('.m3u8')) {
     return (url: cleanUrl, type: CastMediaType.hls);
   }
-  if (lowerOriginal.endsWith('.mp4')) {
+  if (lowerForDetection.endsWith('.mp4')) {
     return (url: cleanUrl, type: CastMediaType.mp4);
   }
-  if (lowerOriginal.endsWith('.mkv')) {
+  if (lowerForDetection.endsWith('.mkv')) {
     return (url: cleanUrl, type: CastMediaType.mkv);
   }
 
   // LUEGO: Detectar URLs de token Xtream Codes (/play/TOKEN o /stream/TOKEN)
   // Si llegamos aquí, es un token sin pista de formato. Asumimos que es un CANAL EN VIVO (MPEG-TS)
-  final isTokenUrl = RegExp(r'/(?:play|stream)/[A-Za-z0-9_\-]{20,}$').hasMatch(cleanUrl);
+  // Usamos urlWithoutQuery para evitar que parámetros como ?token=... rompan el Regex
+  final isTokenUrl = RegExp(r'/(?:play|stream)/[A-Za-z0-9_\-]{20,}$').hasMatch(urlWithoutQuery);
   if (isTokenUrl) {
     debugPrint('CAST_LOG: URL tipo token sin formato explícito — asumiendo Live Stream (MPEG-TS)');
     return (url: cleanUrl, type: CastMediaType.mpegTs);
   }
 
   // Si termina en .ts
-  if (lowerOriginal.endsWith('.ts')) {
+  if (lowerForDetection.endsWith('.ts')) {
     return (url: cleanUrl, type: CastMediaType.mpegTs);
   }
 
