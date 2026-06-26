@@ -348,6 +348,7 @@ class CastNotifier extends Notifier<CastState> {
         url: castUrl,
         type: castType,
         title: title,
+        imageUrl: _iptvHlsProxy.logoUrl, // ¡Mostramos el logo de la app en el Chromecast!
         httpHeaders: const {
           'User-Agent': 'VLC/3.0.9 LibVLC/3.0.9',
           'Connection': 'keep-alive',

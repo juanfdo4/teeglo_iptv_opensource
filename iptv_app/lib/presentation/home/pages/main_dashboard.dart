@@ -8,6 +8,7 @@ import 'movies_page.dart';
 import 'series_page.dart';
 import 'favorites_page.dart';
 import 'playlist_manager_page.dart';
+import '../widgets/cast_status_indicator.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -36,14 +37,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.cast),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Chromecast feature coming soon')),
-              );
-            },
-          ),
+          const CastStatusIndicator(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {

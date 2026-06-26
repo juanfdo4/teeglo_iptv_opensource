@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
@@ -38,8 +39,15 @@ class IptvHlsProxy {
   String? get baseUrl => _localIp != null ? 'http://$_localIp:$_port' : null;
 
   /// URL de la playlist HLS para enviar al Chromecast
-  String? get playlistUrl =>
-      baseUrl != null ? '$baseUrl/playlist.m3u8' : null;
+  String? get playlistUrl {
+    if (_server == null || _hlsDir == null) return null;
+    return 'http://$_localIp:$_port/playlist.m3u8';
+  }
+
+  String? get logoUrl {
+    if (_server == null || _hlsDir == null) return null;
+    return 'http://$_localIp:$_port/logo.png';
+  }
 
   Future<String?> _getLocalIp() async {
     try {
@@ -97,6 +105,16 @@ class IptvHlsProxy {
     dir.createSync(recursive: true);
     _hlsDir = hlsDirPath;
 
+    // Copiar el logo a la carpeta del servidor para poder mostrarlo en Chromecast
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo.png');
+      final logoFile = File('$_hlsDir/logo.png');
+      await logoFile.writeAsBytes(
+          logoBytes.buffer.asUint8List(logoBytes.offsetInBytes, logoBytes.lengthInBytes));
+    } catch (e) {
+      debugPrint('IptvProxy: Error copiando logo.png - $e');
+    }
+
     debugPrint('IptvProxy: Iniciando FFmpeg → HLS en $_hlsDir');
     debugPrint('IptvProxy: Stream URL: $streamUrl');
 
@@ -126,26 +144,19 @@ class IptvHlsProxy {
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '5',
       '-user_agent', userAgent,
+      // Aumentar el buffer de red y tolerancia a errores de tiempo en el stream
+      '-fflags', '+genpts',
+      '-analyzeduration', '10000000',
+      '-probesize', '10000000',
       '-i', url,
-      // Video: desentrelazar + recodificar a H.264 progresivo Chromecast-compatible
-      '-vf', 'yadif=mode=1',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-profile:v', 'high',
-      '-level:v', '4.1',
-      '-pix_fmt', 'yuv420p',
-      '-g', '60',           // keyframe cada ~2s (asumiendo 30fps) → cortes HLS limpios y rápidos
-      '-sc_threshold', '0',
-      // Audio: AAC-LC estéreo (requerido por Chromecast)
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-ac', '2',
-      '-ar', '44100',
+      // Video y Audio: Copiar directamente sin recodificar.
+      // Reduce el uso de CPU a ~1% y soporta streams 1080p60/4K.
+      // (Asume que el proveedor ya envía H.264/AAC que son compatibles).
+      '-c', 'copy',
       // Salida HLS rolling live
       '-f', 'hls',
       '-hls_time', '2',
-      '-hls_list_size', '5',
+      '-hls_list_size', '15', // Guardar 30 segundos de buffer (15 chunks de 2s) para evitar cortes
       '-hls_flags', 'delete_segments+append_list',
       '-hls_allow_cache', '0',
       '-hls_segment_type', 'mpegts',
