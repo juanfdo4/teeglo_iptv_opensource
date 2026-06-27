@@ -33,19 +33,7 @@ void main() async {
   final settingsBox = await Hive.openBox('settings');
   await Hive.openBox('playback_progress');
 
-  // MIGRATION BLOCK: If the user hasn't run the new version with content types, clear DB
-  final isMigrated = settingsBox.get('migrated_ids_v4');
-  
-  if (isMigrated != 'true') {
-    // Clear out old data that might cause collisions or lacks new enum types
-    await Hive.deleteBoxFromDisk('playlists');
-    await Hive.deleteBoxFromDisk('favorites');
-    await Hive.openBox('playlists');
-    await Hive.openBox('favorites');
-    
-    // Mark as migrated
-    await settingsBox.put('migrated_ids_v4', 'true');
-  }
+  // Migration blocks have been removed to prevent accidental data loss.
 
   runApp(
     // Added ProviderScope for Riverpod state management
