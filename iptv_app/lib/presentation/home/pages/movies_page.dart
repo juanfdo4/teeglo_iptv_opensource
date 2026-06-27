@@ -34,6 +34,18 @@ class _MoviesPageState extends ConsumerState<MoviesPage> {
     _processData();
   }
 
+  @override
+  void didUpdateWidget(MoviesPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.movies != oldWidget.movies) {
+      setState(() {
+        _isLoading = true;
+        _selectedCategory = 'Todos';
+      });
+      _processData();
+    }
+  }
+
   Future<void> _processData() async {
     await Future.delayed(const Duration(milliseconds: 300));
     final cats = await compute(_extractCategoriesWorker, widget.movies);

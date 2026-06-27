@@ -54,7 +54,7 @@ class M3uParser {
         if (currentName != null) {
           final uniqueId = currentId != null ? '${currentId}_${line.trim()}' : line.trim();
           final year = _extractYear(currentName);
-          final contentType = _detectContentType(line, currentName);
+          final contentType = _detectContentType(line, currentName, currentGroup);
           String? seriesName;
           int? season;
           int? episode;
@@ -122,22 +122,38 @@ class M3uParser {
     return null;
   }
 
-  static ContentType _detectContentType(String url, String name) {
-    final urlLower = url.toLowerCase();
-    final fileExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.ts', '.flv'];
-    final hasFileExt = fileExtensions.any((ext) => urlLower.contains('#$ext') || urlLower.endsWith(ext));
-    
-    if (!hasFileExt) return ContentType.live;
-    
-    // Detectar patrón SxxExx en el nombre
-    final seriesRegex = RegExp(r'S(\d{1,2})E(\d{1,3})', caseSensitive: false);
+  static ContentType _detectContentType(String url, String name, String? groupTitle) {
+    // 1. Si tiene el patrón de serie en el nombre, siempre es serie
+    final seriesRegex = RegExp(r'S(\d{1,2})\s*E(\d{1,4})', caseSensitive: false);
     if (seriesRegex.hasMatch(name)) return ContentType.series;
+
+    // 2. Revisar si la categoría explícitamente dice que es VOD / Película
+    final groupLower = (groupTitle ?? '').toLowerCase();
+    final isVODGroup = groupLower.contains('vod') || 
+                       groupLower.contains('pelicula') || 
+                       groupLower.contains('película') || 
+                       groupLower.contains('movie') ||
+                       groupLower.contains('cinema') ||
+                       groupLower.contains('cine') ||
+                       groupLower.contains('plex');
     
-    return ContentType.movie;
+    if (isVODGroup) return ContentType.movie;
+
+    // 3. Revisar por extensión de archivo
+    final urlLower = url.toLowerCase();
+    final cleanUrl = urlLower.split('?').first;
+    // Omitimos '.ts' porque en IPTV se usa muchísimo para transmisiones de TV en vivo
+    final strictFileExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.flv'];
+    final hasStrictFileExt = strictFileExtensions.any((ext) => cleanUrl.contains('#$ext') || cleanUrl.endsWith(ext));
+    
+    if (hasStrictFileExt) return ContentType.movie;
+    
+    // Por defecto es TV en vivo
+    return ContentType.live;
   }
 
   static ({String name, int season, int episode})? _parseSeriesInfo(String name) {
-    final regex = RegExp(r'(.+?)\s*S(\d{1,2})E(\d{1,3})', caseSensitive: false);
+    final regex = RegExp(r'(.+?)\s*S(\d{1,2})\s*E(\d{1,4})', caseSensitive: false);
     final match = regex.firstMatch(name);
     if (match != null) {
       return (

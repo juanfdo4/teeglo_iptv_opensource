@@ -6,7 +6,7 @@ class CastAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void attachSession(CastSession session, String title, String subtitle) {
     _castSession = session;
-    
+
     // Configurar la información de la canción/video (MediaItem)
     mediaItem.add(
       MediaItem(
@@ -19,10 +19,27 @@ class CastAudioHandler extends BaseAudioHandler with SeekHandler {
       ),
     );
 
+    // EMITIR INMEDIATAMENTE UN ESTADO DE REPRODUCCIÓN
+    // Esto obliga a Android a registrar la MediaSession inmediatamente y poner el Foreground Service.
+    playbackState.add(
+      playbackState.value.copyWith(
+        controls: [MediaControl.pause, MediaControl.stop],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1],
+        processingState: AudioProcessingState.buffering,
+        playing: true, // ¡Clave para que no nos maten!
+      ),
+    );
+
     // Escuchar el estado de reproducción del Chromecast
     _castSession?.stateStream.listen((state) {
-      bool isPlaying = state == SessionState.playing || state == SessionState.buffering;
-      
+      bool isPlaying =
+          state == SessionState.playing || state == SessionState.buffering;
+
       playbackState.add(
         playbackState.value.copyWith(
           controls: [
@@ -34,9 +51,12 @@ class CastAudioHandler extends BaseAudioHandler with SeekHandler {
             MediaAction.seekForward,
             MediaAction.seekBackward,
           },
-          androidCompactActionIndices: const [0, 1], // Mostrar los dos controles
-          processingState: state == SessionState.buffering 
-              ? AudioProcessingState.buffering 
+          androidCompactActionIndices: const [
+            0,
+            1,
+          ], // Mostrar los dos controles
+          processingState: state == SessionState.buffering
+              ? AudioProcessingState.buffering
               : AudioProcessingState.ready,
           playing: isPlaying,
         ),

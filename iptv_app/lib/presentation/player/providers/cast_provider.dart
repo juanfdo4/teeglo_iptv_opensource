@@ -8,6 +8,7 @@ import 'playback_progress_provider.dart';
 import 'package:flutter_background/flutter_background.dart';
 import 'dart:io';
 import '../../../main.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 final _iptvHlsProxy = IptvHlsProxy();
 
@@ -272,6 +273,11 @@ class CastNotifier extends Notifier<CastState> {
           debugPrint('CAST_LOG: Ejecución en segundo plano habilitada.');
         }
       }
+      
+      // Capa de hardware anti-cierre: Forzar al procesador a no dormir
+      WakelockPlus.enable();
+      debugPrint('CAST_LOG: Wakelock de CPU activado.');
+      
     } catch (e) {
       debugPrint('CAST_LOG: Error al habilitar segundo plano: $e');
     }
@@ -279,6 +285,9 @@ class CastNotifier extends Notifier<CastState> {
 
   Future<void> _stopBackground() async {
     try {
+      WakelockPlus.disable();
+      debugPrint('CAST_LOG: Wakelock de CPU desactivado.');
+      
       if (!kIsWeb && Platform.isAndroid) {
         if (FlutterBackground.isBackgroundExecutionEnabled) {
           await FlutterBackground.disableBackgroundExecution();

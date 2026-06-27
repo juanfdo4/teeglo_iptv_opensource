@@ -157,7 +157,8 @@ class IptvHlsProxy {
       '-f', 'hls',
       '-hls_time', '2',
       '-hls_list_size', '15', // Guardar 30 segundos de buffer (15 chunks de 2s) para evitar cortes
-      '-hls_flags', 'delete_segments+append_list',
+      // omit_endlist: CRÍTICO para IPTV, evita que FFmpeg cierre la playlist (y el Chromecast se detenga "limpiamente") si la red parpadea
+      '-hls_flags', 'delete_segments+append_list+omit_endlist',
       '-hls_allow_cache', '0',
       '-hls_segment_type', 'mpegts',
       '-hls_segment_filename', '$hlsDir/seg%05d.ts',
@@ -176,10 +177,21 @@ class IptvHlsProxy {
         args,
         (session) async {
           final code = await session.getReturnCode();
+          final state = await session.getState();
+          final failStackTrace = await session.getFailStackTrace();
+          
           debugPrint(
-            'IptvProxy: FFmpegKit terminó — '
-            'código: ${ReturnCode.isSuccess(code) ? "OK" : code}',
+            'IptvProxy: 🛑 FFmpegKit terminó — '
+            'Estado: $state, Código: ${ReturnCode.isSuccess(code) ? "OK" : code}',
           );
+          
+          if (!ReturnCode.isSuccess(code)) {
+            final output = await session.getOutput();
+            debugPrint('IptvProxy: 🚨 FFmpeg SALIDA DE ERROR: $output');
+            if (failStackTrace != null) {
+              debugPrint('IptvProxy: 🚨 FFmpeg STACKTRACE: $failStackTrace');
+            }
+          }
         },
         (Log log) {
           debugPrint('[FFmpeg] ${log.getMessage()}');
@@ -260,12 +272,17 @@ class IptvHlsProxy {
   Middleware _corsMiddleware() {
     return (Handler inner) {
       return (Request req) async {
-        debugPrint('IptvProxy: HTTP ${req.method} ${req.url}');
-        final res = await inner(req);
-        return res.change(headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache, no-store',
-        });
+        try {
+          debugPrint('IptvProxy: 🌐 HTTP ${req.method} ${req.url}');
+          final res = await inner(req);
+          return res.change(headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache, no-store',
+          });
+        } catch (e, st) {
+          debugPrint('IptvProxy: ❌ Error sirviendo ${req.url}: $e\n$st');
+          return Response.internalServerError(body: 'Error local proxy');
+        }
       };
     };
   }

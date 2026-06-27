@@ -174,11 +174,39 @@ class PlaylistManagerPage extends ConsumerWidget {
                     ),
                   ],
                 ),
-                onTap: () {
-                  ref.read(activePlaylistIdProvider.notifier).setActivePlaylist(playlist.id);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${playlist.name} set as active playlist')),
+                onTap: () async {
+                  // Mostrar indicador de carga para listas pesadas
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const AlertDialog(
+                      backgroundColor: Color(0xFF1A1A24),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Colors.blue),
+                          SizedBox(height: 16),
+                          Text('Cambiando lista...', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
                   );
+
+                  // Pequeña pausa para permitir que el diálogo se renderice
+                  await Future.delayed(const Duration(milliseconds: 100));
+
+                  // Cambiar la lista (esto dispara el recálculo pesado en MainDashboard)
+                  ref.read(activePlaylistIdProvider.notifier).setActivePlaylist(playlist.id);
+
+                  // Esperar a que los widgets pesados terminen de reconstruirse
+                  await Future.delayed(const Duration(milliseconds: 800));
+
+                  if (context.mounted) {
+                    Navigator.of(context, rootNavigator: true).pop(); // Cerrar diálogo
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${playlist.name} establecida como activa')),
+                    );
+                  }
                 },
               );
             },

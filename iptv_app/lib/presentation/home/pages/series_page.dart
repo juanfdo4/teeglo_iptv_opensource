@@ -73,6 +73,19 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
     _processData();
   }
 
+  @override
+  void didUpdateWidget(SeriesPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.seriesEpisodes != oldWidget.seriesEpisodes) {
+      setState(() {
+        _isLoading = true;
+        // Reset category to 'Todos' if the list changed, to avoid being stuck in a category that doesn't exist
+        _selectedCategory = 'Todos'; 
+      });
+      _processData();
+    }
+  }
+
   Future<void> _processData() async {
     await Future.delayed(const Duration(milliseconds: 300));
     final result = await compute(_groupSeriesWorker, widget.seriesEpisodes);
